@@ -35,6 +35,7 @@ const COMMUNITY_REPOS: GitRepoUrl[] = [
   'https://github.com/Jarsa132/deskthing-volctrl',
   'https://github.com/nwo122383/sonos-webapp',
   'https://github.com/RandomDebugGuy/DeskThing-GMP',
+  'https://github.com/acidkill/DeskThing-ClaudeStatus',
 ]
 
 const ensureCLIDownload = async () => {
