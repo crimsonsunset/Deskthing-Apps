@@ -27,7 +27,7 @@ export class SoundCloudHandler extends SiteHandler {
     super();
     
     // Initialize logger
-    this.log = logger.soundcloud;
+    this.log = logger.getComponent('soundcloud');
     
     // State initialization
     this.isStreamingActive = false;
@@ -114,7 +114,7 @@ export class SoundCloudHandler extends SiteHandler {
    * Check if SoundCloud player is ready
    */
   isReady() {
-    this.log.debug('Checking if SoundCloud handler is ready...');
+    this.log.trace('Checking if SoundCloud handler is ready...');
     
     // Check if we have player controls or MediaSession
     const hasControls = !!this.getElement(this.constructor.config.selectors.playerContainer);
@@ -123,7 +123,7 @@ export class SoundCloudHandler extends SiteHandler {
     const hasMediaEl = !!(this.audioEl && this.audioEl.duration > 0);
     const isReady = !!hasControls || hasMediaSession || this.isStreamingActive || hasMediaEl;
     
-    this.log.debug('Ready check results', {
+    this.log.trace('Ready check results', {
       hasControls,
       hasMediaSession,
       mediaSessionMetadata: mediaSessionObj ? {
@@ -237,6 +237,7 @@ export class SoundCloudHandler extends SiteHandler {
    */
   getTrackInfo() {
     this.log.trace('Extracting track information');
+    // ponytail: internal poll path — keep all sub-logs at trace to avoid 2s flood
     
     const info = {
       title: 'Unknown Track',
@@ -258,7 +259,7 @@ export class SoundCloudHandler extends SiteHandler {
       // Get playing state from MediaSession
       info.isPlaying = navigator.mediaSession.playbackState === 'playing';
       
-      this.log.debug('MediaSession data extracted', {
+      this.log.trace('MediaSession data extracted', {
         hasMetadata: !!metadata,
         title: info.title,
         artist: info.artist,
@@ -267,12 +268,12 @@ export class SoundCloudHandler extends SiteHandler {
         playbackState: navigator.mediaSession.playbackState
       });
     } else {
-      this.log.debug('MediaSession not available or missing metadata');
+      this.log.trace('MediaSession not available or missing metadata');
     }
 
     // Enhance with DOM elements if MediaSession is incomplete
     if (info.title === 'Unknown Track') {
-      this.log.debug('Falling back to DOM for title extraction');
+      this.log.trace('Falling back to DOM for title extraction');
       
       // Try to get title from DOM
       const titleElements = [
@@ -286,7 +287,7 @@ export class SoundCloudHandler extends SiteHandler {
         const element = document.querySelector(selector);
         if (element && element.textContent.trim()) {
           info.title = element.textContent.trim();
-          this.log.debug('Title extracted from DOM', { 
+          this.log.trace('Title extracted from DOM', { 
             selector, 
             title: info.title 
           });
@@ -295,12 +296,12 @@ export class SoundCloudHandler extends SiteHandler {
       }
       
       if (info.title === 'Unknown Track') {
-        this.log.warn('Could not extract title from any DOM selectors');
+        this.log.trace('Could not extract title from any DOM selectors');
       }
     }
 
     if (info.artist === 'Unknown Artist') {
-      this.log.debug('Falling back to DOM for artist extraction');
+      this.log.trace('Falling back to DOM for artist extraction');
       
       // Try to get artist from DOM
       const artistElements = [
@@ -313,7 +314,7 @@ export class SoundCloudHandler extends SiteHandler {
         const element = document.querySelector(selector);
         if (element && element.textContent.trim()) {
           info.artist = element.textContent.trim();
-          this.log.debug('Artist extracted from DOM', { 
+          this.log.trace('Artist extracted from DOM', { 
             selector, 
             artist: info.artist 
           });
@@ -322,7 +323,7 @@ export class SoundCloudHandler extends SiteHandler {
       }
       
       if (info.artist === 'Unknown Artist') {
-        this.log.warn('Could not extract artist from any DOM selectors');
+        this.log.trace('Could not extract artist from any DOM selectors');
       }
     }
 
@@ -345,7 +346,7 @@ export class SoundCloudHandler extends SiteHandler {
 
     this.currentTrack = info;
     
-            this.log.debug('Track info extraction complete', {
+            this.log.trace('Track info extraction complete', {
       finalTrackInfo: info,
       extractionMethods: {
         mediaSessionUsed: !!(navigator.mediaSession && navigator.mediaSession.metadata),

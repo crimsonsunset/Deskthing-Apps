@@ -39,7 +39,7 @@ export class YouTubeHandler extends SiteHandler {
 
   constructor() {
     super();
-    this.log = logger.youtube;
+    this.log = logger.getComponent('youtube');
     this.isYouTubeMusic = window.location.hostname.includes('music.youtube.com');
     this.currentVideoElement = null;
     

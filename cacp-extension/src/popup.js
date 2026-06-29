@@ -10,7 +10,7 @@ const EXTENSION_VERSION = chrome.runtime.getManifest().version;
 let logs = [];
 
 // Initialize popup logger
-const popupLogger = logger.popup;
+const popupLogger = logger.getComponent('popup');
 
 // Utility to format seconds to mm:ss
 function formatTime(sec) {

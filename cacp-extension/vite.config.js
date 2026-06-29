@@ -12,5 +12,10 @@ export default defineConfig({
   build: {
     outDir: "dist",
   },
+  server: {
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+    },
+  },
   plugins: [crx({ manifest })],
 });

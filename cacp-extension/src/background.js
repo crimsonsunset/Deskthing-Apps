@@ -4,6 +4,16 @@
  */
 
 import logger from '@crimsonsunset/jsg-logger';
+
+// Apply logger config at SW startup (same approach as cacp.js content script)
+try {
+  const configResp = await fetch(chrome.runtime.getURL('logger-config.json'));
+  if (configResp.ok) {
+    const config = await configResp.json();
+    logger.configure(config);
+  }
+} catch {}
+
 // Bridge connection to DeskThing shallow app server
 let ws = null; // WebSocket
 let wsConnected = false;
