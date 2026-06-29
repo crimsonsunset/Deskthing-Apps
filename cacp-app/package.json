@@ -1,13 +1,7 @@
 {
-<<<<<<<< HEAD:cacp-app/package.json
   "name": "cacp",
   "private": true,
   "version": "0.1.6",
-========
-  "name": "audio",
-  "private": true,
-  "version": "0.11.1",
->>>>>>>> origin/master:soundcloud-app/package.json.backup
   "type": "module",
   "main": "dist/index.js",
   "description": "Chrome Audio Control Platform - Universal DeskThing app for multi-site audio control",
@@ -21,38 +15,23 @@
     "preview": "vite preview"
   },
   "dependencies": {
-<<<<<<<< HEAD:cacp-app/package.json
     "@deskthing/client": "latest",
     "@deskthing/server": "latest",
     "autoprefixer": "^10.4.21",
-========
-    "@deskthing/client": "^0.11.2",
-    "@deskthing/server": "^0.11.6",
-    "autoprefixer": "^10.4.21",
-    "node-nowplaying": "^0.1.0",
->>>>>>>> origin/master:soundcloud-app/package.json.backup
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "ws": "^8.18.3"
   },
   "devDependencies": {
-<<<<<<<< HEAD:cacp-app/package.json
     "@deskthing/cli": "^0.11.6",
     "@deskthing/types": "^0.11.9",
-========
-    "@deskthing/cli": "^0.11.15",
-    "@deskthing/types": "^0.11.18",
->>>>>>>> origin/master:soundcloud-app/package.json.backup
     "@eslint/js": "^9.9.0",
     "@types/node": "^22.10.7",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@types/ws": "^8.5.13",
     "@vitejs/plugin-react": "^4.3.1",
-<<<<<<<< HEAD:cacp-app/package.json
     "concurrently": "^8.2.2",
-========
->>>>>>>> origin/master:soundcloud-app/package.json.backup
     "esbuild": "^0.19.2",
     "eslint": "^9.9.0",
     "eslint-plugin-react-hooks": "^5.1.0-rc.0",
@@ -61,20 +40,13 @@
     "tsm": "^2.3.0",
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.0.1",
-<<<<<<<< HEAD:cacp-app/package.json
     "vite": "^5.4.15"
   },
   "keywords": [
     "deskthing",
-    "cacp", 
+    "cacp",
     "audio-control",
     "multi-site",
     "universal"
   ]
 }
-
-========
-    "vite": "^5.4.20"
-  }
-}
->>>>>>>> origin/master:soundcloud-app/package.json.backup
