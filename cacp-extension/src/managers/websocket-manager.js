@@ -8,7 +8,7 @@ import logger from '@crimsonsunset/jsg-logger';
 export class WebSocketManager {
   constructor() {
     // Initialize logger
-    this.log = logger.websocketManager;
+    this.log = logger.getComponent('websocket-manager');
     
     this.ws = null;
     this.isConnected = false;

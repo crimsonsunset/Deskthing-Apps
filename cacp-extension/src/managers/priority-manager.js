@@ -8,7 +8,7 @@ import logger from '@crimsonsunset/jsg-logger';
 export class PriorityManager {
   constructor() {
     // Initialize logger
-    this.log = logger.priorityManager;
+    this.log = logger.getComponent('priority-manager');
     
     this.sitePriorities = new Map(); // siteName -> priority number (lower = higher priority)
     this.defaultPriority = 100;

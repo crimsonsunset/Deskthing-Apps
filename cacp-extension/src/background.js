@@ -12,7 +12,7 @@ const MAX_RECONNECT_DELAY_MS = 15000;
 const DEFAULT_WS_URL = 'ws://127.0.0.1:8081';
 
 // Initialize logger
-const backgroundLogger = logger.cacp.child({ component: 'background' });
+const backgroundLogger = logger.getComponent('background');
 
 /**
  * Global Media State Manager
@@ -40,6 +40,8 @@ class GlobalMediaManager {
       trackInfo: sourceData.trackInfo,
       isPlaying: sourceData.isPlaying,
       canControl: sourceData.canControl,
+      currentTime: sourceData.currentTime || 0,
+      duration: sourceData.duration || 0,
       lastUpdate: Date.now(),
       priority: sourceData.priority || 1
     };
@@ -47,11 +49,13 @@ class GlobalMediaManager {
     this.activeSources.set(tabId, source);
     this.updatePriority();
     
-    backgroundLogger.debug('Media source registered', {
+    backgroundLogger.info('Media source registered', {
       tabId,
       site: source.site,
       isActive: source.isActive,
-      trackTitle: source.trackInfo?.title
+      isPlaying: source.isPlaying,
+      trackTitle: source.trackInfo?.title,
+      totalSources: this.activeSources.size
     });
 
     // Notify popup if open
@@ -65,19 +69,30 @@ class GlobalMediaManager {
    */
   updateSource(tabId, updates) {
     const source = this.activeSources.get(tabId);
-    if (source) {
-      Object.assign(source, updates, { lastUpdate: Date.now() });
-      this.updatePriority();
-      
-      backgroundLogger.trace('Media source updated', {
-        tabId,
-        updates: Object.keys(updates)
-      });
 
-      this.notifyPopup('sources-updated', this.getSourcesList());
-      // Push current priority snapshot to app bridge
-      pushPriorityToBridge(this.currentPriority);
+    if (!source) {
+      backgroundLogger.warn('update-media-source received for unknown tab — SW likely restarted, re-registering', {
+        tabId,
+        site: updates.site,
+        totalSources: this.activeSources.size
+      });
+      this.registerSource(tabId, updates);
+      return;
     }
+
+    Object.assign(source, updates, { lastUpdate: Date.now() });
+    this.updatePriority();
+
+    backgroundLogger.trace('Media source updated', {
+      tabId,
+      site: source.site,
+      isPlaying: source.isPlaying,
+      isActive: source.isActive,
+      updates: Object.keys(updates)
+    });
+
+    this.notifyPopup('sources-updated', this.getSourcesList());
+    pushPriorityToBridge(this.currentPriority);
   }
 
   /**
@@ -445,3 +460,21 @@ function pushPriorityToBridge(priority) {
 
 // Establish bridge connection at startup
 connectBridge();
+
+// On fresh SW startup, notify any existing tabs so their content scripts
+// can re-register. The in-memory flag ensures we only broadcast once per
+// SW lifecycle — it resets to false every time the SW module reloads.
+// ponytail: tabs.query fires async; content scripts that lack a CACP handler
+// will just receive and ignore the message (no-op catch).
+let hasNotifiedRestart = false;
+if (!hasNotifiedRestart) {
+  hasNotifiedRestart = true;
+  chrome.tabs.query({}, (tabs) => {
+    backgroundLogger.info('SW started — notifying tabs to re-register', { tabCount: tabs.length });
+    tabs.forEach((tab) => {
+      if (tab.id) {
+        chrome.tabs.sendMessage(tab.id, { type: 'sw-restarted' }).catch(() => {});
+      }
+    });
+  });
+}
