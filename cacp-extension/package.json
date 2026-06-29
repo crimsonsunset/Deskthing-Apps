@@ -6,8 +6,7 @@
     "dev": "vite",
     "build": "vite build",
     "build:debug": "DEBUG_BUILD=1 vite build",
-    "preview": "vite preview",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "preview": "vite preview"
   },
   "keywords": [
     "chrome-extension",
@@ -24,8 +23,8 @@
     "pino": "^9.7.0"
   },
   "devDependencies": {
+    "@crxjs/vite-plugin": "^2.7.0",
     "pino-colada": "^2.2.2",
-    "vite": "^6.3.5",
-    "vite-plugin-chrome-extension": "^0.0.7"
+    "vite": "^6.3.5"
   }
 }
