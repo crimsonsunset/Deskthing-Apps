@@ -1,22 +1,23 @@
 # Next Session Planning - CACP Development
 
-*Last Updated: July 28, 2025*
+*Last Updated: June 29, 2026*
 
-## 🎯 **CURRENT STATUS: CACP Extension Complete - Testing Phase**
+## Current Status
 
-### **✅ MAJOR PROGRESS: CACP Extension Fully Implemented (Last Session)**
-- **CACP extension is 90%+ complete** - sophisticated multi-site architecture implemented
-- **Content script** (455 lines): Global media source reporting with site detection  
-- **Background script** (324 lines): Complete GlobalMediaManager with tab coordination
-- **Site handlers**: Full SoundCloud (892 lines) + YouTube (477 lines) implementations
-- **Base architecture**: Config-driven handler system with override capabilities
-- **Support systems**: WebSocket manager, priority manager, structured logging, popup UI
+**Branch:** `feature/chrome-audio-control-platform`
 
-### **🎯 CURRENT PRIORITY: Extension-to-SoundCloud Communication**
-**Focus**: Get CACP extension working with SoundCloud site **before** touching DeskThing app
-- Extension → SoundCloud site interaction (play/pause/next/prev)
-- Popup interface showing SoundCloud detection and control
-- Validate against working SoundCloud app server (port 8081)
+**Done this session:**
+- Merged upstream `ItsRiprod/DeskThing-Apps` master (22 new commits — recorder, ultimateclock, testagent apps added upstream)
+- Renamed branch from `fix/macos-nowplaying-binary-compatibility` to `feature/chrome-audio-control-platform`
+- Migrated extension build tooling from `vite-plugin-chrome-extension` to `@crxjs/vite-plugin` — HMR now works in dev mode (`npm run dev` in `cacp-extension/`)
+
+**Extension dev workflow (new):**
+- `cd cacp-extension && npm run dev` → starts Vite dev server with HMR
+- Load `dist/` once in Chrome (unpacked), never reload manually again
+- Content scripts + popup hot-reload on save; background triggers auto extension reload
+- `main-world-logger.js` (main world) still needs manual reload
+
+---
 
 ### **🔄 IMPLEMENTATION STATUS**
 

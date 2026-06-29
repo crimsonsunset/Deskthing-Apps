@@ -2,7 +2,7 @@
 
 **Universal Chrome Extension for Audio Control in DeskThing**
 
-> **🎉 Latest Update:** Enhanced CACP with robust image processing and comprehensive logging system (v0.1.3 app / v0.3.26 extension)
+> **🎉 Latest Update (Jun 29, 2026):** Migrated extension dev tooling to CRXJS for HMR — no more manual reloads during development. Upstream sync complete.
 
 ---
 
@@ -13,8 +13,8 @@
 - **`soundcloud-extension/`** - Working Chrome extension for SoundCloud
 
 ### **🎯 Next Generation (CACP Development)**
-- **`cacp-app/`** - Universal DeskThing app (v0.1.3) - **Enhanced with image processing & comprehensive logging**
-- **`cacp-extension/`** - Multi-site Chrome extension (v0.3.26) - **90%+ complete**
+- **`cacp-app/`** - Universal DeskThing app (v0.1.6)
+- **`cacp-extension/`** - Multi-site Chrome extension (v1.1.4) — HMR dev via CRXJS
 
 ### **🛠️ Shared Infrastructure**
 - **`scripts/`** - Build tools and utilities
@@ -52,9 +52,14 @@ npm run build
 
 #### **Building CACP Extension**
 ```bash
-cd cacp-extension  
+# Production build
+cd cacp-extension
 npm run build
 # Output: dist/ folder for Chrome extension loading
+
+# Development (HMR — load dist/ once, then edits auto-reload)
+cd cacp-extension
+npm run dev
 ```
 
 ### **🎯 Installation & Testing**
@@ -67,10 +72,12 @@ npm run build
 5. **Install** and start the CACP app
 
 #### **2. Load CACP Extension in Chrome**
-1. **Build** the extension: `cd cacp-extension && npm run build`
+1. **Start dev server** (for development): `cd cacp-extension && npm run dev`
+   - OR **build** (for production): `npm run build`
 2. **Open Chrome** → Extensions → Developer Mode (ON)
 3. **Load Unpacked** → Select `cacp-extension/dist/` folder
 4. **Pin** the CACP extension to toolbar for easy access
+5. **Dev mode only:** edits to content scripts and popup auto-reload via HMR. Background script changes trigger an automatic extension reload. `main-world-logger.js` still requires a manual reload.
 
 #### **3. Test Integration**
 1. **Start CACP app** in DeskThing (should show "Ready for Chrome extension connections")
@@ -131,13 +138,13 @@ Look for these log entries in DeskThing logs:
 #### **Confirm Correct Versions**
 ```bash
 # CACP App - Check DeskThing logs for:
-🚀 [CACP-Server] Starting enhanced CACP app v0.1.3
+🚀 [CACP-Server] Starting enhanced CACP app v0.1.6
 
 # CACP Extension - Check popup or console for:
-CACP Extension v0.3.26 initialized
+CACP Extension v1.1.4 initialized
 
 # Extension Popup - Shows version in bottom corner
-v0.3.26
+v1.1.4
 ```
 
 ### **🐛 Common Issues & Solutions**
@@ -236,19 +243,17 @@ Multiple Sites → Universal Chrome Extension → CACP App WebSocket (port 8081)
 ## ⚡ **Quick Development Workflow**
 
 ```bash
-# 1. Make changes to CACP app or extension
-# 2. Bump version numbers in manifests/package.json
-# 3. Rebuild both components
+# Development (HMR — load dist/ once in Chrome, edits auto-reload)
+cd cacp-extension && npm run dev
+
+# Production build
 cd cacp-app && npm run build
 cd ../cacp-extension && npm run build
 
-# 4. Reload in DeskThing and Chrome
-# 5. Test with SoundCloud/YouTube
-# 6. Check logs for version confirmation and debugging
-
-# 7. Look for version logs:
-# 🚀 [CACP-Server] Starting enhanced CACP app v0.1.3
-# CACP Extension v0.3.26 initialized
+# Reload in DeskThing and Chrome after production build
+# Check logs for version confirmation:
+# 🚀 [CACP-Server] Starting enhanced CACP app v0.1.6
+# CACP Extension v1.1.4 initialized
 ```
 
 ---

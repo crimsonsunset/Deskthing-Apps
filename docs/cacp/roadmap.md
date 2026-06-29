@@ -132,8 +132,9 @@ Note: Current scope limits “supported sites” to SoundCloud and YouTube durin
 
 ---
 
-### 2025-08-08 — Progress Note (Validation)
+### 2026-06-29 — Dev Tooling Update
 
-- Adopted ARIA-first timeline extraction on SoundCloud feed (reads `[role="progressbar"]` now/max) with fallbacks; scrubs update immediately. Added detailed trace logging for timing paths.
-- Fixed popup UX (open-by-default, art + progress, heartbeat) and content SW/module build issues; manifests now patch-bumped on each build and version logged.
-- Remaining: sanitize duplicated DOM titles, relax control presence check, and improve popup reconnect after SW restarts.
+- Migrated extension from `vite-plugin-chrome-extension` to `@crxjs/vite-plugin` v2.7.0 for HMR dev workflow.
+- Merged upstream `ItsRiprod/DeskThing-Apps` master (new apps: recorder, ultimateclock, testagent).
+- Renamed working branch to `feature/chrome-audio-control-platform`.
+- Remaining from Aug 2025: sanitize duplicated DOM titles, relax `hasControls` check, improve popup reconnect after SW restarts, validate YouTube handler end-to-end.
