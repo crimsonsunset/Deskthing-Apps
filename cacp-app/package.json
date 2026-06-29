@@ -23,7 +23,7 @@
     "ws": "^8.18.3"
   },
   "devDependencies": {
-    "@deskthing/cli": "^0.11.6",
+    "@deskthing/cli": "^0.11.15",
     "@deskthing/types": "^0.11.9",
     "@eslint/js": "^9.9.0",
     "@types/node": "^22.10.7",
