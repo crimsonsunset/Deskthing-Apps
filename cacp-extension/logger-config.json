@@ -41,12 +41,6 @@
       "name": "SiteDetector",
       "level": "debug"
     },
-    "websocket-manager": { 
-      "emoji": "🌐", 
-      "color": "#9B59B6", 
-      "name": "WebSocket",
-      "level": "info"
-    },
     "popup": { 
       "emoji": "🎛️", 
       "color": "#FF6B6B", 
@@ -58,12 +52,6 @@
       "color": "#4ECDC4", 
       "name": "Background",
       "level": "debug"
-    },
-    "priority-manager": { 
-      "emoji": "⚖️", 
-      "color": "#45B7D1", 
-      "name": "PriorityManager",
-      "level": "info"
     },
     "settings": { 
       "emoji": "⚙️", 

@@ -16,11 +16,14 @@ import logger from '@crimsonsunset/jsg-logger';
   } catch {}
 })();
 
-// Bridge connection to DeskThing shallow app server
-let ws = null; // WebSocket
+// Bridge connection to DeskThing app server
+let ws = null;
 let wsConnected = false;
+let wsConnecting = false;
 let reconnectDelayMs = 1000;
-const MAX_RECONNECT_DELAY_MS = 15000;
+let pingIntervalId = null;
+const MAX_RECONNECT_DELAY_MS = 30000;
+const PING_INTERVAL_MS = 30000;
 const DEFAULT_WS_URL = 'ws://127.0.0.1:8081';
 
 // Initialize logger
@@ -366,73 +369,111 @@ backgroundLogger.info('Global Media Controller ready');
 backgroundLogger.debug('CACP Background Global Media Controller initialized'); 
 
 // --------------- Bridge: WS client ----------------
+
+/**
+ * Returns the bridge WebSocket URL.
+ * @returns {string}
+ */
 function getBridgeUrl() {
-  // Allow override via storage later; for now fixed default
   return DEFAULT_WS_URL;
 }
 
+/**
+ * Starts a 30s keepalive ping interval. Clears any existing interval first.
+ */
+function startPingInterval() {
+  if (pingIntervalId) clearInterval(pingIntervalId);
+  pingIntervalId = setInterval(() => {
+    if (wsConnected && ws) {
+      try { ws.send(JSON.stringify({ type: 'ping' })); } catch {}
+    }
+  }, PING_INTERVAL_MS);
+}
+
+/**
+ * Tears down bridge connection state and clears the ping interval.
+ */
+function cleanupBridge() {
+  wsConnected = false;
+  wsConnecting = false;
+  ws = null;
+  if (pingIntervalId) {
+    clearInterval(pingIntervalId);
+    pingIntervalId = null;
+  }
+}
+
+/**
+ * Opens (or reopens) the WebSocket connection to the CACP app bridge.
+ * Guards against concurrent attempts. On unintentional close, schedules
+ * an exponential-backoff-with-jitter reconnect (capped at 30s).
+ */
 function connectBridge() {
+  if (wsConnected || wsConnecting) return;
+  wsConnecting = true;
+
   try {
     const url = getBridgeUrl();
     ws = new WebSocket(url);
 
     ws.addEventListener('open', () => {
       wsConnected = true;
+      wsConnecting = false;
       reconnectDelayMs = 1000;
       backgroundLogger.info('Connected to CACP app bridge', { url });
-      // Identify extension/version
-      const hello = {
-        type: 'connection',
-        source: 'cacp-extension',
-        version: chrome.runtime.getManifest().version,
-        ts: Date.now()
-      };
-      try { ws.send(JSON.stringify(hello)); } catch {}
-      // Send initial snapshot if available
+      try {
+        ws.send(JSON.stringify({
+          type: 'connection',
+          source: 'cacp-extension',
+          version: chrome.runtime.getManifest().version,
+          ts: Date.now()
+        }));
+      } catch {}
+      startPingInterval();
       pushPriorityToBridge(mediaManager.currentPriority);
     });
 
-    ws.addEventListener('close', () => {
-      wsConnected = false;
-      ws = null;
+    ws.addEventListener('close', (event) => {
+      const isIntentional = event.code === 1000;
+      cleanupBridge();
+      if (isIntentional) return;
       backgroundLogger.warn('Bridge disconnected, scheduling reconnect', { reconnectDelayMs });
       setTimeout(connectBridge, reconnectDelayMs);
-      reconnectDelayMs = Math.min(reconnectDelayMs * 2, MAX_RECONNECT_DELAY_MS);
+      reconnectDelayMs = Math.min(reconnectDelayMs * 2 + Math.random() * 1000, MAX_RECONNECT_DELAY_MS);
     });
 
-    ws.addEventListener('error', (e) => {
-      backgroundLogger.warn('Bridge socket error', { message: e?.message || 'unknown' });
+    ws.addEventListener('error', () => {
+      backgroundLogger.warn('Bridge socket error');
+      wsConnecting = false;
     });
 
     ws.addEventListener('message', async (evt) => {
       try {
         const msg = JSON.parse(evt.data);
-        if (msg?.type === 'media-command' && msg?.action) {
-          // Map action names to our internal commands
-          const action = String(msg.action).toLowerCase();
-          switch (action) {
-            case 'play':
-              await mediaManager.sendControlCommand('play');
-              break;
-            case 'pause':
-              await mediaManager.sendControlCommand('pause');
-              break;
-            case 'previoustrack':
-            case 'previous':
-              await mediaManager.sendControlCommand('previous');
-              break;
-            case 'nexttrack':
-            case 'next':
-              await mediaManager.sendControlCommand('next');
-              break;
-            case 'seek':
-              if (typeof msg.time === 'number') {
-                await mediaManager.sendControlCommand('seek', null, msg.time);
-              }
-              break;
-            default:
-              backgroundLogger.debug('Unknown bridge command', { action });
-          }
+        if (msg?.type !== 'media-command' || !msg?.action) return;
+        const action = String(msg.action).toLowerCase();
+        switch (action) {
+          case 'play':
+            await mediaManager.sendControlCommand('play');
+            break;
+          case 'pause':
+            await mediaManager.sendControlCommand('pause');
+            break;
+          case 'previoustrack':
+          case 'previous':
+            await mediaManager.sendControlCommand('previous');
+            break;
+          case 'nexttrack':
+          case 'next':
+            await mediaManager.sendControlCommand('next');
+            break;
+          case 'seek':
+            if (typeof msg.time === 'number') {
+              await mediaManager.sendControlCommand('seek', null, msg.time);
+            }
+            break;
+          default:
+            backgroundLogger.debug('Unknown bridge command', { action });
         }
       } catch (err) {
         backgroundLogger.warn('Failed to process bridge message', { error: err?.message });
@@ -440,11 +481,17 @@ function connectBridge() {
     });
   } catch (e) {
     backgroundLogger.error('Failed to create bridge socket', { error: e?.message });
+    wsConnecting = false;
   }
 }
 
+/**
+ * Pushes the current priority source's media state to the bridge.
+ * No-ops when not connected or no priority source exists.
+ * @param {Object|null} priority - The current priority media source
+ */
 function pushPriorityToBridge(priority) {
-  if (!priority || !wsConnected || !ws) return;
+  if (!priority || !wsConnected || !ws || ws.readyState !== WebSocket.OPEN) return;
   const track = priority.trackInfo || {};
   const mediaData = {
     type: 'mediaData',

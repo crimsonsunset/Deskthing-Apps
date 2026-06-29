@@ -42,9 +42,7 @@ cacp-extension/src/
 │   ├── soundcloud.js        # SoundCloud implementation — MSE hooks, MediaSession, DOM fallbacks
 │   └── youtube.js           # YouTube implementation
 └── managers/
-    ├── site-detector.js     # URL pattern matching, handler registry, createHandlerInstance
-    ├── priority-manager.js  # Multi-source priority scoring
-    └── websocket-manager.js # WS client with reconnect/backoff
+    └── site-detector.js     # URL pattern matching, handler registry, createHandlerInstance
 
 cacp-extension/
 ├── logger-config.json       # Component log levels, colors, emojis
@@ -72,7 +70,7 @@ Runs on every page. On supported sites:
 - `GlobalMediaManager` — `Map<tabId, MediaSource>` with priority scoring
 - Handles `register-media-source`, `update-media-source`, `remove-media-source`, `get-global-state`, `control-media` messages
 - On `control-media`: forwards `chrome.tabs.sendMessage` to target tab's content script
-- WebSocket client to `ws://127.0.0.1:8081` with exponential backoff reconnect
+- WebSocket client to `ws://127.0.0.1:8081` — exponential backoff with jitter (1s → 30s cap), `isConnecting` guard prevents concurrent attempts, 30s keepalive ping, respects intentional close (code 1000)
 - On fresh SW startup: broadcasts `sw-restarted` to all tabs
 
 ### Site Handlers
@@ -103,6 +101,7 @@ Highest score wins. Popup shows `★ Priority` badge and enables global controls
 { type: 'connection', source: 'cacp-extension', version, ts }
 { type: 'mediaData', site, sourceId, data: { title, artist, album, artwork, isPlaying } }
 { type: 'timeupdate', currentTime, duration, isPlaying }
+{ type: 'ping' }
 ```
 
 ### App → Extension (WS)
