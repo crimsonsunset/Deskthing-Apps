@@ -1,7 +1,9 @@
 import { DeskThing } from '@deskthing/server';
 import { existsSync, mkdirSync, writeFile, readdirSync, unlinkSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const IMAGES_DIR = join(__dirname, '../images');
 const PUBLIC_BASE = '/resource/image/cacp/';
 
