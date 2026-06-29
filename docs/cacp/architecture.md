@@ -1,131 +1,143 @@
 # CACP Architecture
 
-**Chrome Audio Control Platform - Technical Design**
+**Chrome Audio Control Platform — Technical Design**
 
-**Updated:** July 28, 2025  
-**Current Structure:** Dual development with separated CACP and SoundCloud implementations
+*Last Updated: June 29, 2026*
 
 ---
 
-## 🏗️ **System Overview**
+## System Overview
 
-CACP implements a **modular site handler architecture** that allows multiple music streaming services to be controlled through a single Chrome extension and DeskThing app integration.
+CACP bridges audio controls from streaming sites to the DeskThing device via two pieces:
 
-## 📁 **Physical Structure**
+1. **`cacp-extension`** — Chrome extension that runs content scripts on music sites, detects playback state, and sends it to the background SW
+2. **`cacp-app`** — DeskThing app with a React frontend and a WebSocket server that receives media data from the extension and forwards DeskThing hardware button presses back as control commands
 
-### **CACP Implementation (New)**
 ```
-cacp-extension/
-├── cacp.js                 # Main orchestrator
+Music Site Tab
+    └── cacp.js (content script)
+            └── SoundCloudHandler / YouTubeHandler
+                    │  chrome.runtime.sendMessage
+                    ▼
+        background.js (Service Worker)
+            GlobalMediaManager (Map<tabId, source>)
+                    │  WebSocket ws://127.0.0.1:8081
+                    ▼
+        cacp-app server
+            │  DeskThing SDK
+            ▼
+        DeskThing device (hardware buttons → control commands back up the chain)
+```
+
+## File Structure
+
+```
+cacp-extension/src/
+├── cacp.js                  # Content script — orchestrates detection, registration, reporting
+├── background.js            # SW — global media state, WS bridge to app
+├── popup.js                 # Extension popup UI
+├── main-world-logger.js     # Injected into page main world for logger controls
 ├── sites/
-│   ├── base-handler.js     # Base class with config + override pattern
-│   ├── soundcloud.js       # SoundCloud implementation
-│   ├── youtube.js          # YouTube implementation
-│   └── _template.js        # Template for contributors
-├── managers/
-│   ├── site-detector.js    # URL pattern matching
-│   ├── priority-manager.js # User priority ranking
-│   └── websocket-manager.js # DeskThing communication
-├── settings/
-│   ├── settings.html       # Priority drag-drop interface
-│   └── settings.js         # Settings logic
-└── manifest.json           # Multi-site permissions
-```
+│   ├── base-handler.js      # Config-driven base class (getElement, clickElement, parseTimeString...)
+│   ├── soundcloud.js        # SoundCloud implementation — MSE hooks, MediaSession, DOM fallbacks
+│   └── youtube.js           # YouTube implementation
+└── managers/
+    ├── site-detector.js     # URL pattern matching, handler registry, createHandlerInstance
+    ├── priority-manager.js  # Multi-source priority scoring
+    └── websocket-manager.js # WS client with reconnect/backoff
 
-```
+cacp-extension/
+├── logger-config.json       # Component log levels, colors, emojis
+├── manifest.json            # MV3 manifest — permissions, content scripts, SW
+└── vite.config.js           # CRXJS plugin, port 5150
+
 cacp-app/
-├── server/
-│   ├── index.ts            # WebSocket server (port 8081)
-│   ├── mediaStore.ts       # Multi-site message routing
-│   └── siteManager.ts      # Site-specific data handling
-├── src/
-│   └── App.tsx             # React frontend
-└── deskthing/
-    └── manifest.json       # CACP app manifest
+├── src/                     # React frontend (DeskThing UI)
+└── server/                  # WS bridge server (port 8081)
 ```
 
-### **SoundCloud Legacy (Working Baseline)**
+## Core Components
+
+### Content Script (`cacp.js`)
+
+Runs on every page. On supported sites:
+1. Loads `logger-config.json` via sync XHR and calls `logger.configure()`
+2. Instantiates `SiteDetector`, registers handlers
+3. Calls `detectSite()` → `activateHandler()` → `registerWithBackground()`
+4. Starts 2s polling loop (`reportMediaState`) — skips if state unchanged
+5. Listens for `sw-restarted` → resets `isRegistered` → re-registers
+
+### Background SW (`background.js`)
+
+- `GlobalMediaManager` — `Map<tabId, MediaSource>` with priority scoring
+- Handles `register-media-source`, `update-media-source`, `remove-media-source`, `get-global-state`, `control-media` messages
+- On `control-media`: forwards `chrome.tabs.sendMessage` to target tab's content script
+- WebSocket client to `ws://127.0.0.1:8081` with exponential backoff reconnect
+- On fresh SW startup: broadcasts `sw-restarted` to all tabs
+
+### Site Handlers
+
+All extend `SiteHandler` from `base-handler.js`. Key points:
+
+- **`getElement(key)`** expects a config key (`'playButton'`), not a CSS string. If you need a raw selector, use `document.querySelector(selector)` directly.
+- **`isReady()`** — SoundCloud overrides this to use `document.querySelector` directly for the player container check (not `getElement`), plus MediaSession/audioEl/streaming checks
+- **`isActive`** semantics — set in `cacp.js`'s `getCurrentMediaState()`: true when track title is populated (not the default fallback) OR currently playing. Enables controls even when paused.
+- **`bindMediaEvents(el)`** — bind `play`, `pause`, `ended`, `timeupdate` to captured audio element. Guards double-bind with `el._cacpBound`.
+
+### Priority Scoring
+
 ```
-soundcloud-extension/       # Current working Chrome extension
-soundcloud-app/            # Current working DeskThing app
-```
-
-## 🔄 **Communication Protocol**
-
-### **WebSocket Messages (Unchanged)**
-The protocol is already designed for multi-site support:
-
-**Extension → DeskThing:**
-```javascript
-{ type: 'mediaData', site: 'soundcloud', data: { title, artist, isPlaying } }
-{ type: 'timeupdate', site: 'soundcloud', currentTime, duration, isPlaying }
-{ type: 'command-result', site: 'soundcloud', commandId, success, result }
-```
-
-**DeskThing → Extension:**
-```javascript
-{ type: 'media-command', action: 'play', targetSite?: 'soundcloud' }
-{ type: 'seek', time: 120, targetSite?: 'soundcloud' }
-```
-
-## 🎯 **Site Handler Interface**
-
-### **Base Handler Pattern**
-```javascript
-export class SiteHandler {
-  // Config-driven defaults
-  static config = {
-    name: 'Site Name',
-    urlPatterns: ['example.com'],
-    selectors: { playButton: '.play', /* ... */ }
-  };
-  
-  // Core methods (can use config or override)
-  play() { /* click config.selectors.playButton or custom logic */ }
-  pause() { /* click config.selectors.pauseButton or custom logic */ }
-  getTrackInfo() { /* extract from config.selectors or custom logic */ }
-  
-  // Override for complex cases
-  isReady() { return true; }
-  isLoggedIn() { return true; }
-}
+score = source.priority (base)
++ 10 if isPlaying
++ 5  if canControl
++ 2  if isActive
 ```
 
-## 🔧 **Core Components**
+Highest score wins. Popup shows `★ Priority` badge and enables global controls for that source.
 
-### **Site Detection & Priority**
-- **URL pattern matching** determines active site
-- **User priority settings** resolve conflicts when multiple sites have audio
-- **Auto-switching** when higher-priority site becomes active
+## Communication Protocol
 
-### **Message Routing**
-- **Single WebSocket** connection on port 8081
-- **Site identification** in all messages
-- **Command targeting** via optional `targetSite` parameter
+### Extension → App (WS)
 
-### **Settings Management**
-- **Chrome extension options page** for site priority
-- **Drag-drop interface** for user configuration
-- **Per-site enable/disable** controls
+```js
+{ type: 'connection', source: 'cacp-extension', version, ts }
+{ type: 'mediaData', site, sourceId, data: { title, artist, album, artwork, isPlaying } }
+{ type: 'timeupdate', currentTime, duration, isPlaying }
+```
 
-## 🎯 **Design Patterns**
+### App → Extension (WS)
 
-### **Progressive Enhancement**
-1. **Config-only** handlers for simple sites (80% of cases)
-2. **Selective overrides** for complex edge cases (15% of cases)  
-3. **Full custom implementation** for unique architectures (5% of cases)
+```js
+{ type: 'media-command', action: 'play'|'pause'|'next'|'previous'|'seek', time? }
+```
 
-### **Graceful Degradation**
-- **Fallback strategies** when selectors change
-- **MediaSession API** as backup when site-specific detection fails
-- **Error isolation** preventing one site from breaking others
+### Content Script ↔ Background (chrome.runtime)
 
----
+```js
+// Content → Background
+{ type: 'register-media-source', data: { site, isActive, trackInfo, isPlaying, canControl, priority } }
+{ type: 'update-media-source', data: { ...currentState } }
+{ type: 'remove-media-source' }
 
-## 🚧 **Current Development Status**
+// Background → Content
+{ type: 'media-control', command: 'play'|'pause'|'next'|'previous'|'seek', time? }
+{ type: 'sw-restarted' }
 
-**Scaffolded:** ✅ Directory structure, manifests, documentation  
-**Next Phase:** 🔄 Base handler class implementation  
-**Working Baseline:** ✅ SoundCloud implementation preserved for reference
+// Popup → Background
+{ type: 'get-global-state' }
+{ type: 'control-media', command, tabId?, time? }
+{ type: 'set-priority-source', tabId }
+```
 
-**Target:** Universal platform supporting 5+ streaming services with contributor-friendly architecture.
+## SW Lifecycle Handling
+
+Chrome terminates idle service workers after ~30s. CACP handles this:
+
+1. SW keepalive: `setInterval(() => chrome.runtime.getPlatformInfo(() => {}), 25000)`
+2. On SW restart: broadcast `sw-restarted` to all tabs
+3. Content scripts reset `isRegistered = false` on receipt and re-register
+4. `updateSource` upserts if `tabId` unknown (lost in-memory state after restart)
+
+## CORS / HMR
+
+CRXJS handles HMR by polling the Vite dev server from extension pages. The extension popup runs at `chrome-extension://...` origin — Vite's `cors: true` middleware fires after CRXJS's route handlers, so headers never get added. Fix: `server.headers: { 'Access-Control-Allow-Origin': '*' }` which sets headers at the HTTP level before any handler responds.

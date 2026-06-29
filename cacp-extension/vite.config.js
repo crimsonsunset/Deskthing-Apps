@@ -13,6 +13,8 @@ export default defineConfig({
     outDir: "dist",
   },
   server: {
+    port: 5150,
+    strictPort: true,
     headers: {
       'Access-Control-Allow-Origin': '*',
     },

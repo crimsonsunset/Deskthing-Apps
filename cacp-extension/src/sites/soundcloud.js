@@ -116,8 +116,8 @@ export class SoundCloudHandler extends SiteHandler {
   isReady() {
     this.log.trace('Checking if SoundCloud handler is ready...');
     
-    // Check if we have player controls or MediaSession
-    const hasControls = !!this.getElement(this.constructor.config.selectors.playerContainer);
+    // Use document.querySelector directly — getElement() expects a config key, not a CSS string
+    const hasControls = !!document.querySelector(this.constructor.config.selectors.playerContainer);
     const mediaSessionObj = (navigator.mediaSession && navigator.mediaSession.metadata) ? navigator.mediaSession.metadata : null;
     const hasMediaSession = !!mediaSessionObj;
     const hasMediaEl = !!(this.audioEl && this.audioEl.duration > 0);
@@ -126,15 +126,9 @@ export class SoundCloudHandler extends SiteHandler {
     this.log.trace('Ready check results', {
       hasControls,
       hasMediaSession,
-      mediaSessionMetadata: mediaSessionObj ? {
-        title: mediaSessionObj?.title,
-        artist: mediaSessionObj?.artist
-      } : null,
       isStreamingActive: this.isStreamingActive,
-      finalResult: isReady,
-      playerContainerSelector: this.constructor.config.selectors.playerContainer,
-      playerContainerFound: !!document.querySelector(this.constructor.config.selectors.playerContainer),
-      hasMediaEl
+      hasMediaEl,
+      finalResult: isReady
     });
     
     return isReady;
@@ -251,7 +245,7 @@ export class SoundCloudHandler extends SiteHandler {
     // Try MediaSession first (most reliable)
     if (navigator.mediaSession && navigator.mediaSession.metadata) {
       const metadata = navigator.mediaSession.metadata;
-      info.title = metadata.title || info.title;
+      info.title = this.sanitizeTitle(metadata.title) || info.title;
       info.artist = metadata.artist || info.artist;
       info.album = metadata.album || info.album;
       info.artwork = metadata.artwork || [];
@@ -286,7 +280,7 @@ export class SoundCloudHandler extends SiteHandler {
       for (const selector of titleElements) {
         const element = document.querySelector(selector);
         if (element && element.textContent.trim()) {
-          info.title = element.textContent.trim();
+          info.title = this.sanitizeTitle(element.textContent.trim());
           this.log.trace('Title extracted from DOM', { 
             selector, 
             title: info.title 
@@ -1071,6 +1065,53 @@ export class SoundCloudHandler extends SiteHandler {
         }
       });
     });
+  }
+
+  /**
+   * Bind native media events to a captured audio element
+   * Called when audioEl is first captured via src/srcObject hooks
+   * @param {HTMLMediaElement} el The captured audio element
+   */
+  bindMediaEvents(el) {
+    if (!el || el._cacpBound) return;
+    el._cacpBound = true;
+
+    el.addEventListener('play', () => {
+      this.log.debug('Audio play event fired');
+    });
+
+    el.addEventListener('pause', () => {
+      this.log.debug('Audio pause event fired');
+    });
+
+    el.addEventListener('ended', () => {
+      this.log.debug('Audio ended event fired');
+      this.stopPositionTracking();
+    });
+
+    el.addEventListener('timeupdate', () => {
+      if (!this.positionUpdateInterval) {
+        this.startPositionTracking();
+      }
+    });
+
+    this.log.debug('Media events bound to audio element', { tag: el.tagName });
+  }
+
+  /**
+   * Sanitize a track title from SoundCloud DOM/MediaSession
+   * Strips "Current track: " a11y prefix and removes doubled strings
+   * @param {string} raw Raw title string
+   * @returns {string} Cleaned title
+   */
+  sanitizeTitle(raw) {
+    if (!raw) return raw;
+    const stripped = raw.replace(/^current track:\s*/i, '').trim();
+    const half = Math.floor(stripped.length / 2);
+    if (stripped.length > 0 && stripped.length % 2 === 0 && stripped.slice(0, half) === stripped.slice(half)) {
+      return stripped.slice(0, half);
+    }
+    return stripped;
   }
 
   /**

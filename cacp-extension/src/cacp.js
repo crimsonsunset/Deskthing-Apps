@@ -422,7 +422,7 @@ class CACPMediaSource {
                 type: 'register-media-source',
                 data: {
                     site: this.activeSiteName,
-                    isActive: this.currentHandler?.isReady ? this.currentHandler.isReady() : false,
+                    isActive: mediaState.isActive,
                     trackInfo: mediaState.trackInfo,
                     isPlaying: mediaState.isPlaying,
                     canControl: this.currentHandler?.canControl || true,
@@ -477,8 +477,9 @@ class CACPMediaSource {
             const isPlaying = this.currentHandler.isPlaying ? this.currentHandler.isPlaying() : (this.currentHandler.getPlayingState ? this.currentHandler.getPlayingState() : false);
             const currentTime = this.currentHandler.getCurrentTime ? this.currentHandler.getCurrentTime() : 0;
             const duration = this.currentHandler.getDuration ? this.currentHandler.getDuration() : 0;
-            // Consider active when either handler reports ready OR media is currently playing
-            const isActive = this.currentHandler.isReady ? (this.currentHandler.isReady() || isPlaying) : isPlaying;
+            // Active when track metadata is present — enables controls even when paused
+            const hasTrackData = !!(trackInfo?.title && trackInfo.title !== 'Unknown Track' && trackInfo.title !== 'Unknown Title');
+            const isActive = hasTrackData || isPlaying;
 
             return {
                 isActive,
