@@ -1,0 +1,27 @@
+{
+  "id": "ultimateclock",
+  "requires": [],
+  "label": "Ultimate Clock",
+  "version": "0.11.2",
+  "description": "The ultimate and best clock app you have ever seen",
+  "author": "Riprod",
+  "platforms": [
+    "windows",
+    "linux",
+    "mac",
+    "mac64",
+    "macarm",
+    "android",
+    "ios",
+    "arm64",
+    "x64"
+  ],
+  "homepage": "https://deskthing.app",
+  "repository": "https://github.com/itsriprod/deskthing-apps",
+  "template": "full",
+  "tags": [],
+  "requiredVersions": {
+    "server": ">=0.11.17",
+    "client": ">=0.11.2"
+  }
+}
