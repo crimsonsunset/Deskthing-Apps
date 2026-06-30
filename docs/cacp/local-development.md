@@ -38,7 +38,7 @@ npm run install:all        # installs root + soundcloud-app + cacp-app + cacp-ex
 ### Emulator mode
 
 `cacp-app` runs `concurrently`:
-- Vite React app on **:5050** — your DeskThing app UI (currently a stub; this is what you see in the browser)
+- Vite React app on **:5050** — your DeskThing app UI (now-playing + transport; rendered inside `:3050`)
 - `@deskthing/cli dev` — dev shell + server worker (not DeskThing Desktop)
 
 The CLI starts three things:
@@ -60,18 +60,18 @@ Source: `node_modules/@deskthing/cli/src/emulator/` (`DevApp.tsx`, `DevWrapper.t
 | Expectation (wrong) | Reality |
 |---|---|
 | Car Thing device frame around the app | Full-screen iframe of your Vite app only |
-| Now-playing UI in the emulator shell | Shell forwards `DeskThing.sendSong()` to the iframe via `postMessage` (`DEVICE_CLIENT.MUSIC`). **Your `App.tsx` must subscribe** with `@deskthing/client` to display anything |
-| Transport buttons at `:3050` | No hardware controls in the shell. Transport from dev UI requires buttons in `App.tsx` (→ `SongEvent.SET` → server) or the **extension popup**, or **DeskThing Desktop** on real hardware |
+| Now-playing UI in the emulator shell | Shell forwards `DeskThing.sendSong()` to the iframe via `postMessage` (`DEVICE_CLIENT.MUSIC`). **`App.tsx` subscribes** via `@deskthing/client` — shows artwork, metadata, progress, and transport when the bridge is active |
+| Transport buttons at `:3050` | No hardware controls in the shell. Transport from **Prev / Play-Pause / Next** in `App.tsx` (→ `SongEvent.SET` → server), extension popup, or **DeskThing Desktop** |
 | `:5050` is ignorable | `:5050` is the only visual surface. `:3050` just wraps it in an iframe |
 
 Song data path when the bridge works:
 
 ```
 extension → :8081 → CACPMediaStore → DeskThing.sendSong()
-  → CLI MusicService → postMessage(DEVICE_CLIENT.MUSIC) → App.tsx (if implemented)
+  → CLI MusicService → postMessage(DEVICE_CLIENT.MUSIC) → App.tsx
 ```
 
-Transport path (when implemented in `App.tsx` or from Desktop):
+Transport path (from `App.tsx`, extension popup, or Desktop):
 
 ```
 UI / hardware → SongEvent.SET → initializer.ts → :8081 → extension → tab
@@ -152,7 +152,7 @@ Production-stable extension: `cd cacp-extension && npm run build` then load `dis
 |---|---|
 | Fast server/extension iteration, popup controls | `npm run start:emulator` |
 | Real DeskThing now-playing + Car Thing hardware | Build zip → Desktop install → `npm run start:desktop` |
-| In-browser now-playing during emulator dev | Build out `App.tsx` with `@deskthing/client` (future) |
+| In-browser now-playing during emulator dev | `App.tsx` subscribes to `DEVICE_CLIENT.MUSIC` and exposes transport controls |
 
 ### Desktop troubleshooting
 
@@ -170,7 +170,7 @@ Production-stable extension: `cd cacp-extension && npm run build` then load `dis
 | Port | Service | Notes |
 |---|---|---|
 | **3050** | `@deskthing/cli` dev shell | Browser entry point — iframes `:5050` + dev gear. Not a Car Thing UI |
-| **5050** | cacp-app Vite | Your React app — the only thing rendered on screen today (stub) |
+| **5050** | cacp-app Vite | React app — now-playing + transport (same view inside `:3050` iframe) |
 | **8080** | Emulator link bus | Shell ↔ server wrapper WebSocket; not the extension |
 | **8081** | Extension ↔ app WS bridge | Starts only after `DESKTHING_EVENTS.START` |
 | **5150** | cacp-extension CRXJS HMR | Separate terminal from `start:emulator` |
@@ -206,7 +206,7 @@ SoundCloud/YouTube tab
   → CACPMediaStore.handleExtensionMessage()
   → DeskThing.sendSong()
   → CLI forwards DEVICE_CLIENT.MUSIC to iframe (:5050)
-  → App.tsx displays it (not implemented yet — stub shows static text)
+  → App.tsx displays track + progress + transport controls
 
 Controls (reverse) — extension popup or App.tsx transport UI, not emulator shell:
 SongEvent.SET (from @deskthing/client or DeskThing Desktop)
@@ -222,10 +222,10 @@ SongEvent.SET (from @deskthing/client or DeskThing Desktop)
 
 | URL / surface | Purpose |
 |---|---|
-| `http://localhost:3050` | Dev shell entry (same content as `:5050` in an iframe + gear icon) |
-| Extension popup | **Primary for bridge dev** — active sources, track info, manual transport |
+| `http://localhost:3050` | Dev shell entry — **now-playing + transport** when extension bridge is active (same UI as `:5050` in an iframe + gear icon) |
+| Extension popup | Alternate transport surface — active sources, track info, manual controls |
 | SoundCloud tab | Actual audio source (YouTube handler present but unvalidated) |
-| `http://localhost:5050` | Direct Vite app (same stub as inside `:3050` iframe) |
+| `http://localhost:5050` | Direct Vite app (same UI as inside `:3050` iframe) |
 | cacp-app terminal | Server logs — extension connect, `mediaData`, command send |
 
 ---
@@ -278,7 +278,7 @@ cd cacp-extension && npm run dev
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `:3050` looks empty / only stub text | Expected — `App.tsx` is a stub; emulator has no Car Thing UI | Use extension popup + server logs for bridge dev; build `App.tsx` with `@deskthing/client` for in-browser now-playing |
+| `:3050` shows "No track — open SoundCloud…" | Bridge not active or nothing playing | Extension loaded, SoundCloud playing, server on `:8081` after START |
 | `:8081 ERR_CONNECTION_REFUSED` forever | App not running or server worker crashed | Check `[DeskThing Server]` errors in cacp-app terminal |
 | `:8081` refused briefly then connects | START race | Wait; extension auto-reconnects |
 | No track in popup | Extension not connected or no playing tab | Open SoundCloud, play a track, confirm extension loaded |

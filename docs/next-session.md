@@ -17,7 +17,7 @@
 - Popup shows active media sources, track info, artwork, progress bar, play/pause/next/prev controls
 - Controls (play/pause/next/prev/seek) work from extension popup → `:8081` → server → tab
 - `@deskthing/cli` dev shell at `:3050` is iframe + server worker only (no transport UI in shell)
-- `App.tsx` is still a stub — no `@deskthing/client` now-playing UI yet
+- `App.tsx` now-playing + transport UI via `@deskthing/client` (`DEVICE_CLIENT.MUSIC`, `SongEvent.SET`)
 - SW restart re-registration — content scripts re-register after Chrome's 30s SW termination
 - WebSocket bridge from extension → DeskThing app (`ws://127.0.0.1:8081`) with reconnect/backoff
 - `isActive` = track metadata present (title populated) → controls always enabled when track is loaded
@@ -25,9 +25,16 @@
 - `bindMediaEvents` bound on audio element capture for immediate play/pause/ended state
 - Logger configured in SW via async fetch of `logger-config.json` at startup
 
+### Progress Log
+
+### June 30, 2026 — Now-playing UI (Phases 1–4)
+- `use-cacp-music.hook.ts` + `App.tsx` now-playing shell + transport controls shipped
+- `:3050` / `:5050` show live track when extension bridge active; empty state when not
+- `npm run build` packages `cacp-v0.1.6.zip` with new client UI
+
 ### Remaining Tasks
 
-- [ ] Build `App.tsx` with `@deskthing/client` — `DEVICE_CLIENT.MUSIC` now-playing + transport buttons for emulator dev
+- [x] Build `App.tsx` with `@deskthing/client` — `DEVICE_CLIENT.MUSIC` now-playing + transport buttons for emulator dev
 - [ ] Verify YouTube handler works end-to-end (same `isReady()` fix applied but untested)
 - [ ] Clean up excessive `console.log` debug statements in `cacp.js` (logger exposure block ~lines 798–905)
 - [ ] Investigate `fileOverrides: 0`, `components: 1` in SW logger init log — SW logger init fires before async config load completes
