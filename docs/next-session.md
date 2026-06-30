@@ -7,15 +7,17 @@
 **Branch:** `feature/chrome-audio-control-platform`  
 **Dev entry point:** `npm start` (or `start:emulator` / `start:desktop`)  
 **Extension dev server:** port `5150`  
-**DeskThing emulator:** port `3050`, Vite on `5050`
+**DeskThing dev shell:** port `3050` (iframes Vite on `5050`) — not a Car Thing UI
 
 ---
 
 ### What Works
 
-- SoundCloud detection, registration, and media state reporting to popup
+- Extension WS ping/pong keepalive — server replies `{ type: 'pong' }`; unknown extension types log to console only (no DeskThing warning spam)
 - Popup shows active media sources, track info, artwork, progress bar, play/pause/next/prev controls
-- Controls (play/pause/next/prev/seek) work from both popup and DeskThing emulator
+- Controls (play/pause/next/prev/seek) work from extension popup → `:8081` → server → tab
+- `@deskthing/cli` dev shell at `:3050` is iframe + server worker only (no transport UI in shell)
+- `App.tsx` is still a stub — no `@deskthing/client` now-playing UI yet
 - SW restart re-registration — content scripts re-register after Chrome's 30s SW termination
 - WebSocket bridge from extension → DeskThing app (`ws://127.0.0.1:8081`) with reconnect/backoff
 - `isActive` = track metadata present (title populated) → controls always enabled when track is loaded
@@ -25,6 +27,7 @@
 
 ### Remaining Tasks
 
+- [ ] Build `App.tsx` with `@deskthing/client` — `DEVICE_CLIENT.MUSIC` now-playing + transport buttons for emulator dev
 - [ ] Verify YouTube handler works end-to-end (same `isReady()` fix applied but untested)
 - [ ] Clean up excessive `console.log` debug statements in `cacp.js` (logger exposure block ~lines 798–905)
 - [ ] Investigate `fileOverrides: 0`, `components: 1` in SW logger init log — SW logger init fires before async config load completes
@@ -73,7 +76,8 @@ Track metadata present → controls enabled even when paused. Set in both `getCu
 |---|---|
 | cacp-extension Vite (CRXJS HMR) | 5150 |
 | cacp-app Vite | 5050 |
-| DeskThing emulator | 3050 |
+| DeskThing dev shell | 3050 |
+| cacp-app Vite (app UI) | 5050 |
 | Extension↔App WS bridge | 8081 |
 
 ### SW Restart Flow

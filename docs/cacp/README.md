@@ -47,7 +47,10 @@ npm run start          # interactive: emulator or desktop mode
 # or: npm run start:emulator
 ```
 
-Load `cacp-extension/dist/` once in Chrome as an unpacked extension. Open `http://localhost:3050` for the emulator UI.
+Load `cacp-extension/dist/` once in Chrome as an unpacked extension.
+
+- **Dev shell:** `http://localhost:3050` (iframe wrapper — not Car Thing UI)
+- **Real DeskThing UI:** build zip → install in Desktop — see [Local Development → DeskThing Desktop install](./local-development.md#deskthing-desktop-install-real-car-thing-ui)
 
 See **[Local Development](./local-development.md)** for full port map, startup sequence, and troubleshooting.
 
@@ -57,7 +60,7 @@ See **[Local Development](./local-development.md)** for full port map, startup s
 |---|---|
 | cacp-extension Vite (CRXJS HMR) | 5150 |
 | cacp-app Vite | 5050 |
-| DeskThing emulator | 3050 |
+| DeskThing emulator shell | 3050 |
 | Extension↔App WS bridge | 8081 |
 
 ## Documentation

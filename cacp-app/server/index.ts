@@ -30,7 +30,7 @@ try {
 }
 
 type ExtensionMessage = {
-  type: 'connection' | 'mediaData' | 'timeupdate' | 'command-result';
+  type: 'connection' | 'mediaData' | 'timeupdate' | 'command-result' | 'ping';
   site?: string;
   sourceId?: string | number;
   data?: { title?: string; artist?: string; album?: string; artwork?: string; isPlaying?: boolean };
@@ -41,6 +41,7 @@ type ExtensionMessage = {
   action?: string;
   success?: boolean;
   commandId?: string;
+  timestamp?: number;
 };
 
 const startWsServer = async () => {

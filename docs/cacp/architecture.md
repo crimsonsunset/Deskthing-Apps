@@ -2,7 +2,7 @@
 
 **Chrome Audio Control Platform — Technical Design**
 
-*Last Updated: June 29, 2026*
+*Last Updated: June 30, 2026*
 
 ---
 
@@ -11,7 +11,7 @@
 CACP bridges audio controls from streaming sites to the DeskThing device via two pieces:
 
 1. **`cacp-extension`** — Chrome extension that runs content scripts on music sites, detects playback state, and sends it to the background SW
-2. **`cacp-app`** — DeskThing app with a React frontend and a WebSocket server that receives media data from the extension and forwards DeskThing hardware button presses back as control commands
+2. **`cacp-app`** — DeskThing app with a React frontend and a WebSocket server that receives media data from the extension and forwards control commands back to the extension
 
 ```
 Music Site Tab
@@ -24,10 +24,22 @@ Music Site Tab
                     │  WebSocket ws://127.0.0.1:8081
                     ▼
         cacp-app server
-            │  DeskThing SDK
+            │  DeskThing SDK (sendSong / SongEvent.SET)
             ▼
-        DeskThing device (hardware buttons → control commands back up the chain)
+        DeskThing client — hardware (Desktop) or your App.tsx (emulator dev)
 ```
+
+### Dev emulator vs DeskThing Desktop
+
+| | `@deskthing/cli` dev (`:3050`) | DeskThing Desktop |
+|---|---|---|
+| Purpose | Run server worker + iframe your Vite app | Real Car Thing / device UX |
+| Visual UI | Full-screen iframe of `:5050` + dev gear | Device chrome + installed app |
+| Now-playing | Only if `App.tsx` uses `@deskthing/client` (`DEVICE_CLIENT.MUSIC`) | Platform renders from `sendSong()` |
+| Transport | Extension popup, `App.tsx` buttons, or Desktop hardware | Physical knobs/buttons |
+| Message bus | WS `:8080` (shell ↔ server wrapper) | Desktop runtime |
+
+The CLI emulator does **not** simulate Car Thing hardware. `DevWrapper.tsx` only iframes your Vite dev server and forwards `sendSong()` payloads into the iframe via `postMessage`. See [local-development.md](./local-development.md#what-the-emulator-actually-is).
 
 ## File Structure
 
@@ -50,7 +62,7 @@ cacp-extension/
 └── vite.config.js           # CRXJS plugin, port 5150
 
 cacp-app/
-├── src/                     # React frontend (DeskThing UI)
+├── src/                     # React frontend — must use @deskthing/client for now-playing in dev
 └── server/                  # WS bridge server (port 8081)
 ```
 
@@ -108,6 +120,7 @@ Highest score wins. Popup shows `★ Priority` badge and enables global controls
 
 ```js
 { type: 'media-command', action: 'play'|'pause'|'next'|'previous'|'seek', time? }
+{ type: 'pong', timestamp }   // reply to extension keepalive ping
 ```
 
 ### Content Script ↔ Background (chrome.runtime)

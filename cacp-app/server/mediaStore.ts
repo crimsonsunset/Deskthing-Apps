@@ -17,7 +17,7 @@ interface ExtensionMediaData {
 }
 
 interface ExtensionMessage {
-  type: 'mediaData' | 'timeupdate' | 'connection' | 'command-result';
+  type: 'mediaData' | 'timeupdate' | 'connection' | 'command-result' | 'ping';
   site?: string;
   sourceId?: string | number;
   data?: ExtensionMediaData;
@@ -29,6 +29,7 @@ interface ExtensionMessage {
   action?: string;
   success?: boolean;
   commandId?: string;
+  timestamp?: number;
 }
 
 /**
@@ -273,14 +274,41 @@ export class CACPMediaStore {
             sendDeskThingError(`❌ [CACP-MediaStore] Command ${action} failed on extension side`);
           }
           break;
+
+        case 'ping':
+          this.sendPongToExtension(message.timestamp);
+          break;
           
         default:
-          sendDeskThingWarning(`⚠️ [CACP-MediaStore] Unknown extension message type: ${messageType}`);
+          console.log(`📋 [CACP-MediaStore] Unknown extension message type: ${messageType}`);
       }
       
     } catch (error: any) {
       sendDeskThingError(`❌ [CACP-MediaStore] Error processing extension message: ${error?.message || error}`);
       console.error('Full error:', error);
+    }
+  }
+
+  /**
+   * Replies to extension WS keepalive ping per docs/cacp/api-reference.md.
+   * @param {number} [pingTimestamp] - Timestamp from the ping payload, if present
+   */
+  private sendPongToExtension(pingTimestamp?: number): void {
+    if (!this.extensionWebSocket) {
+      console.log('📋 [CACP-MediaStore] Ping received but no extension WebSocket to reply on');
+      return;
+    }
+
+    const payload = {
+      type: 'pong',
+      timestamp: pingTimestamp ?? Date.now(),
+    };
+
+    try {
+      this.extensionWebSocket.send(JSON.stringify(payload));
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.log(`📋 [CACP-MediaStore] Failed to send pong: ${message}`);
     }
   }
 

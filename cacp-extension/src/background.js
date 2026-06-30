@@ -385,7 +385,7 @@ function startPingInterval() {
   if (pingIntervalId) clearInterval(pingIntervalId);
   pingIntervalId = setInterval(() => {
     if (wsConnected && ws) {
-      try { ws.send(JSON.stringify({ type: 'ping' })); } catch {}
+      try { ws.send(JSON.stringify({ type: 'ping', timestamp: Date.now() })); } catch {}
     }
   }, PING_INTERVAL_MS);
 }
@@ -450,6 +450,10 @@ function connectBridge() {
     ws.addEventListener('message', async (evt) => {
       try {
         const msg = JSON.parse(evt.data);
+        if (msg?.type === 'pong') {
+          backgroundLogger.trace('Bridge pong received', { timestamp: msg.timestamp });
+          return;
+        }
         if (msg?.type !== 'media-command' || !msg?.action) return;
         const action = String(msg.action).toLowerCase();
         switch (action) {
