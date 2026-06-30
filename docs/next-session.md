@@ -5,7 +5,7 @@
 ## Current Status
 
 **Branch:** `feature/chrome-audio-control-platform`  
-**Dev entry point:** `npm run start:dev` (or `start:emulator` / `start:desktop`)  
+**Dev entry point:** `npm start` (or `start:emulator` / `start:desktop`)  
 **Extension dev server:** port `5150`  
 **DeskThing emulator:** port `3050`, Vite on `5050`
 

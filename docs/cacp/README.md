@@ -43,7 +43,7 @@ DeskThing-Apps/
 
 ```bash
 npm run install:all    # first time only
-npm run start:dev      # interactive: emulator or desktop mode
+npm run start          # interactive: emulator or desktop mode
 # or: npm run start:emulator
 ```
 

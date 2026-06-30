@@ -34,6 +34,44 @@ async function getParentProcessNames() {
 }
 
 /**
+ * Returns PIDs for the current process and its ancestors so we never kill the script or its caller.
+ * @returns {Promise<Set<string>>}
+ */
+export async function getCurrentProcessTree() {
+  const tree = new Set();
+  let currentPid = process.pid.toString();
+  tree.add(currentPid);
+
+  for (let i = 0; i < 10; i++) {
+    try {
+      const { stdout } = await execAsync(`ps -o ppid= -p ${currentPid}`);
+      const parentPid = stdout.trim();
+      if (!parentPid || parentPid === '1' || parentPid === '0') break;
+      tree.add(parentPid);
+      currentPid = parentPid;
+    } catch {
+      break;
+    }
+  }
+
+  return tree;
+}
+
+/**
+ * Returns the working directory of the given process via lsof. Empty string if unavailable.
+ * @param {string} pid
+ * @returns {Promise<string>}
+ */
+export async function getProcessCwd(pid) {
+  try {
+    const { stdout } = await execAsync(`lsof -a -d cwd -p ${pid} -Fn 2>/dev/null | grep "^n" | cut -c2-`);
+    return stdout.trim();
+  } catch {
+    return '';
+  }
+}
+
+/**
  * Detect which terminal is running this process.
  * @returns {Promise<'warp'|'iterm'|'apple_terminal'|'cursor'|'vscode'|'unknown'>}
  */

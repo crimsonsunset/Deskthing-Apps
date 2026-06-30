@@ -28,7 +28,7 @@ DeskThing-Apps/
 ### **Development Workflow**
 ```bash
 npm run install:all        # Install all dependencies (includes cacp-extension)
-npm run start:dev          # Interactive emulator/desktop picker
+npm run start              # Interactive emulator/desktop picker
 # or: npm run start:emulator
 
 # Load cacp-extension/dist/ in Chrome Developer Mode (once)

@@ -10,11 +10,12 @@ How to run CACP locally: the dev start script, emulator vs Desktop mode, ports, 
 
 ```bash
 # From repo root — interactive mode picker
-npm run start:dev
+npm run start
 
 # Non-interactive shortcuts
 npm run start:emulator   # cacp-app + extension (recommended for daily dev)
 npm run start:desktop    # extension only — DeskThing Desktop must already be running
+npm run kill             # stop all CACP dev processes and free ports
 
 # First-time setup
 npm run install:all        # installs root + soundcloud-app + cacp-app + cacp-extension
@@ -30,7 +31,7 @@ npm run install:all        # installs root + soundcloud-app + cacp-app + cacp-ex
 |---|---|---|---|
 | **Emulator** | `start:emulator` | `cacp-app` in current terminal + `cacp-extension` in new tab | Daily dev, no hardware, no zip install |
 | **Desktop** | `start:desktop` | `cacp-extension` only | Testing against real DeskThing Desktop with installed cacp app |
-| **Interactive** | `start:dev` | Prompts you to pick emulator or desktop | Default when unsure |
+| **Interactive** | `npm start` | Prompts you to pick emulator or desktop | Default when unsure |
 
 ### Emulator mode
 
@@ -169,8 +170,8 @@ cd cacp-extension && npm run dev
 | Emulator shows no track | Extension not connected or no playing tab | Open SoundCloud, play a track, check popup |
 | Controls from emulator don't work | No active source or extension disconnected | Look for `Chrome extension connected` in app logs |
 | Extension tab didn't open | Cursor/VS Code can't spawn macOS tabs | Run `cd cacp-extension && npm run dev` manually |
-| Port 8080 conflict | Stale emulator or another DeskThing app | `npm run kill-port` (8080 only) |
-| Port 8081 conflict | `soundcloud-app` also running | Only one app can own 8081; stop the other stack |
+| Port 8080/8081 conflict | Stale emulator or another DeskThing app | `npm run kill` |
+| Port 8081 owned by soundcloud-app | Both stacks bind 8081 | Stop soundcloud-app; only one stack at a time |
 
 See also [DevTools](./devtools.md) for SW log access via Chrome DevTools MCP.
 
