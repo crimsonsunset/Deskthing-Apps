@@ -553,11 +553,12 @@ export class SoundCloudHandler extends SiteHandler {
    * Seek to specific time
    */
   async seek(time) {
-    this.log.debug('Seeking to position', { time, timeFormatted: `${time}s` });
+    this.log.info('[CACP-Seek] soundcloud seek start', { time, hasMse: !!this.mseElement });
     
     // Try MSE element first
     if (this.mseElement) {
       this.mseElement.currentTime = time;
+      this.log.info('[CACP-Seek] soundcloud seek via mseElement', { time });
       return { success: true, action: 'seek', time };
     }
 
@@ -566,12 +567,14 @@ export class SoundCloudHandler extends SiteHandler {
     for (const element of mediaElements) {
       if (element.duration && element.duration > 0) {
         element.currentTime = time;
+        this.log.info('[CACP-Seek] soundcloud seek via media element', { time, tag: element.tagName });
         return { success: true, action: 'seek', time };
       }
     }
 
     // Calculate progress bar position and synthesize pointer events on wrapper
     const duration = this.getDuration();
+    this.log.info('[CACP-Seek] soundcloud seek fallback to click', { time, duration });
     if (duration > 0) {
       const percentage = time / duration;
       // Prefer the role=progressbar wrapper
@@ -598,11 +601,12 @@ export class SoundCloudHandler extends SiteHandler {
         fire('mouseup');
         fire('click');
 
-        this.log.trace('Seek click dispatched', { percentage: Math.round(percentage * 100), clickX, rectLeft: rect.left, rectWidth: rect.width });
+        this.log.info('[CACP-Seek] soundcloud seek click dispatched', { percentage: Math.round(percentage * 100), clickX, rectLeft: rect.left, rectWidth: rect.width });
         return { success: true, action: 'seek', time, method: 'mouse-sequence' };
       }
     }
 
+    this.log.warn('[CACP-Seek] soundcloud seek failed — no method available', { time, duration });
     return { success: false, error: 'No seek method available' };
   }
 

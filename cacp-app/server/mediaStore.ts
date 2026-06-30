@@ -105,6 +105,9 @@ export class CACPMediaStore {
     };
 
     // Enhanced logging for all commands
+    if (action === 'seek') {
+      console.log(`[CACP-Seek] mediaStore WS outbound action=seek time=${payload.time} hasSocket=${!!this.extensionWebSocket}`);
+    }
     console.log(`🎮 [CACP-MediaStore] Sending command to extension: ${action}`);
     console.log(`📋 [CACP-MediaStore] Command payload:`, JSON.stringify(command, null, 2));
     
@@ -395,15 +398,23 @@ export class CACPMediaStore {
   }
 
   public handleSeek(data: { positionMs: number }) {
+    if (data.positionMs == null || Number.isNaN(data.positionMs)) {
+      console.warn(`[CACP-Seek] mediaStore handleSeek rejected — invalid positionMs: ${data.positionMs}`);
+      return;
+    }
+
     const seconds = Math.round(data.positionMs / 1000);
-    console.log(`⏩ [CACP-MediaStore] Seek requested to ${seconds}s (from ${data.positionMs}ms)`);
-    
+    console.log(`[CACP-Seek] mediaStore handleSeek positionMs=${data.positionMs} → time=${seconds}s`);
+
     if (this.extensionData.duration) {
       const percentage = (seconds / this.extensionData.duration) * 100;
-      console.log(`⏩ [CACP-MediaStore] Seeking to ${percentage.toFixed(1)}% of ${this.extensionData.duration}s track`);
+      console.log(`[CACP-Seek] mediaStore seek target ${percentage.toFixed(1)}% of known duration ${this.extensionData.duration}s`);
+    } else {
+      console.log('[CACP-Seek] mediaStore seek — no extension duration cached yet');
     }
-    
-    this.sendCommandToExtension('seek', { time: seconds });
+
+    const sent = this.sendCommandToExtension('seek', { time: seconds });
+    console.log(`[CACP-Seek] mediaStore WS seek command sent=${sent}`);
   }
 
   public handleVolume(data: { volume: number }) {

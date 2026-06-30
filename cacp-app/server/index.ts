@@ -4,7 +4,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { CACPMediaStore } from "./mediaStore";
 import { deleteImages } from "./imageUtils";
 import { initializeListeners } from "./initializer";
-import { sendDeskThingError } from "./deskthing-log.helpers.js";
+import { sendDeskThingError, sendDeskThingLog } from "./deskthing-log.helpers.js";
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -108,8 +108,7 @@ const start = async () => {
     
             console.log(`✅ [CACP-Server] CACP App v${CACP_VERSION} Started Successfully - Ready for Chrome extension connections`);
     
-    // Match SoundCloud app - use DeskThing.sendLog for key server events
-    DeskThing.sendLog('CACP Server Started with Chrome Extension WebSocket support!');
+    sendDeskThingLog('CACP Server Started with Chrome Extension WebSocket support!');
     
     // Log status for debugging
     const mediaStore = CACPMediaStore.getInstance();
@@ -148,7 +147,7 @@ const stop = async () => {
     deleteImages();
     
     console.log('✅ [CACP-Server] CACP App Stopped Successfully');
-    DeskThing.sendLog('Server Stopped');
+    sendDeskThingLog('Server Stopped');
     isStarted = false;
     
   } catch (error: any) {
@@ -174,7 +173,7 @@ const purge = async () => {
     deleteImages();
     
     console.log('✅ [CACP-Server] CACP App Purged Successfully');
-    DeskThing.sendLog('Server Purged');
+    sendDeskThingLog('Server Purged');
     isStarted = false;
     
   } catch (error: any) {

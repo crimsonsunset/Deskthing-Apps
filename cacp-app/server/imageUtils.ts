@@ -4,7 +4,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const IMAGES_DIR = join(__dirname, '../images');
+const IMAGES_DIR = join(__dirname, '../deskthing/images');
 const PUBLIC_BASE = '/resource/image/cacp/';
 
 function ensureImagesDir() {
@@ -44,8 +44,9 @@ export async function saveRemoteImage(url: string, fileNameHint: string): Promis
     const buffer = Buffer.from(arrayBuffer);
     const safeName = fileNameHint.replace(/[^a-z0-9_-]/gi, '_').slice(0, 80) || 'artwork';
     return await saveBinaryImage(buffer, safeName, ext);
-  } catch (err: any) {
-    sendDeskThingWarning(`saveRemoteImage error: ${err?.message || err}`);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    sendDeskThingWarning(`saveRemoteImage error: ${message}`);
     return undefined;
   }
 }
@@ -54,7 +55,11 @@ export function deleteImages() {
   ensureImagesDir();
   const files = readdirSync(IMAGES_DIR);
   for (const file of files) {
-    try { unlinkSync(join(IMAGES_DIR, file)); } catch {}
+    try {
+      unlinkSync(join(IMAGES_DIR, file));
+    } catch {
+      // file may already be gone
+    }
   }
 }
 

@@ -8,6 +8,12 @@ export default defineConfig({
   server: {
     port: 5050,
     strictPort: true,
+    proxy: {
+      '/resource': {
+        target: 'http://localhost:3050',
+        changeOrigin: true,
+      },
+    },
   },
 })
 

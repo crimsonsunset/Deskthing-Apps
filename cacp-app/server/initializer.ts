@@ -46,7 +46,7 @@ DeskThing.on(SongEvent.SET, (data) => {
   
   switch (data.request) {
     case AUDIO_REQUESTS.FAST_FORWARD:
-      console.log(`📡 [CACP-Initializer] Processing FAST_FORWARD: ${data.payload}ms`);
+      console.log(`[CACP-Seek] initializer SET FAST_FORWARD payload=${data.payload} typeof=${typeof data.payload} (routed as absolute seek ms)`);
       mediaStore.handleSeek({ positionMs: data.payload }); // Use seek for fast forward
       break;
     case AUDIO_REQUESTS.LIKE:
@@ -74,11 +74,11 @@ DeskThing.on(SongEvent.SET, (data) => {
       mediaStore.handleRepeat();
       break;
     case AUDIO_REQUESTS.REWIND:
-      console.log(`📡 [CACP-Initializer] Processing REWIND: ${data.payload}ms`);
+      console.log(`[CACP-Seek] initializer SET REWIND payload=${data.payload} typeof=${typeof data.payload} (routed as absolute seek ms)`);
       mediaStore.handleSeek({ positionMs: data.payload }); // Use seek for rewind
       break;
     case AUDIO_REQUESTS.SEEK:
-      console.log(`📡 [CACP-Initializer] Processing SEEK: ${data.payload}ms`);
+      console.log(`[CACP-Seek] initializer SET SEEK payload=${data.payload} typeof=${typeof data.payload}`);
       mediaStore.handleSeek({ positionMs: data.payload });
       break;
     case AUDIO_REQUESTS.SHUFFLE:

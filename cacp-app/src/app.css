@@ -108,6 +108,10 @@ body {
   overflow: hidden;
 }
 
+.cacp-progress-bar-interactive {
+  cursor: pointer;
+}
+
 .cacp-progress-fill {
   height: 100%;
   background: #3b82f6;

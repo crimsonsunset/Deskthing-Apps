@@ -20,6 +20,7 @@ export type CacpMusicState = {
   sendTransport: (request: TransportRequest) => void;
   togglePlayPause: () => void;
   hasAbility: (ability: SongAbilities) => boolean;
+  sendSeek: (positionMs: number) => void;
 };
 
 /**
@@ -82,6 +83,19 @@ export const useCacpMusic = (): CacpMusicState => {
     sendTransport(isPlaying ? AUDIO_REQUESTS.PAUSE : AUDIO_REQUESTS.PLAY);
   }, [isPlaying, sendTransport]);
 
+  /**
+   * Send an absolute seek request (track position in ms) to the DeskThing server.
+   */
+  const sendSeek = useCallback((positionMs: number) => {
+    console.log(`[CACP-Seek] hook sendSeek positionMs=${positionMs}`);
+    DeskThing.send({
+      app: 'music',
+      type: SongEvent.SET,
+      request: AUDIO_REQUESTS.SEEK,
+      payload: positionMs,
+    });
+  }, []);
+
   const hasAbility = useCallback(
     (ability: SongAbilities) => {
       if (!song?.abilities?.length) {
@@ -99,5 +113,6 @@ export const useCacpMusic = (): CacpMusicState => {
     sendTransport,
     togglePlayPause,
     hasAbility,
+    sendSeek,
   };
 };

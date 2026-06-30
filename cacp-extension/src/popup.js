@@ -248,6 +248,7 @@ class CACPPopup {
           const rect = bar.getBoundingClientRect();
           const ratio = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
           const target = Math.floor(duration * ratio);
+          console.log('[CACP-Seek] popup global progress click', { ratio, targetSeconds: target, duration });
           this.sendGlobalSeek(target);
         };
       }
@@ -351,6 +352,7 @@ class CACPPopup {
         const rect = progress.getBoundingClientRect();
         const ratio = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
         const target = Math.floor(duration * ratio);
+        console.log('[CACP-Seek] popup source progress click', { tabId, ratio, targetSeconds: target, duration });
         this.sendSourceSeek(tabId, target);
       };
     }
@@ -416,6 +418,7 @@ class CACPPopup {
    * Send seek command to highest priority source
    */
   async sendGlobalSeek(seconds) {
+    console.log('[CACP-Seek] popup sendGlobalSeek', { seconds });
     try {
       const response = await chrome.runtime.sendMessage({
         type: 'control-media',
@@ -460,6 +463,7 @@ class CACPPopup {
    * Send seek to a specific source
    */
   async sendSourceSeek(tabId, seconds) {
+    console.log('[CACP-Seek] popup sendSourceSeek', { tabId, seconds });
     try {
       const response = await chrome.runtime.sendMessage({
         type: 'control-media',

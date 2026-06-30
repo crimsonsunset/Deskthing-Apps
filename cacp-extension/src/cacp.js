@@ -645,8 +645,27 @@ class CACPMediaSource {
                     break;
                 case 'seek':
                     if (typeof time === 'number' && this.currentHandler.seek) {
+                        this.log.info('[CACP-Seek] content script seek dispatch', {
+                            time,
+                            site: this.activeSiteName,
+                            handler: this.currentHandler.constructor?.name,
+                        });
                         result = await this.currentHandler.seek(time);
+                        const seekSucceeded = result && typeof result === 'object' && 'success' in result
+                            ? result.success
+                            : !!result;
+                        this.log.info('[CACP-Seek] content script seek result', {
+                            time,
+                            site: this.activeSiteName,
+                            rawResult: result,
+                            interpretedSuccess: seekSucceeded,
+                        });
                     } else {
+                        this.log.warn('[CACP-Seek] content script seek rejected', {
+                            time,
+                            typeofTime: typeof time,
+                            hasSeek: !!this.currentHandler.seek,
+                        });
                         return { success: false, error: 'Seek time missing or unsupported' };
                     }
                     break;

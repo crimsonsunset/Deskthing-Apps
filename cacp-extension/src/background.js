@@ -209,6 +209,11 @@ class GlobalMediaManager {
       // Allow optional time param for seek
       if (command === 'seek' && typeof arguments[2] === 'number') {
         payload.time = arguments[2];
+        backgroundLogger.info('[CACP-Seek] sendControlCommand seek', {
+          targetTabId,
+          time: arguments[2],
+          priorityTab: this.currentPriority?.tabId,
+        });
       }
       const response = await chrome.tabs.sendMessage(targetTabId, payload);
 
@@ -327,6 +332,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       break;
 
     case 'control-media':
+      if (message.command === 'seek') {
+        backgroundLogger.info('[CACP-Seek] popup control-media seek', {
+          tabId: message.tabId,
+          time: message.time,
+        });
+      }
       // Popup sending control command (optional time for seek)
       mediaManager.sendControlCommand(message.command, message.tabId, message.time)
         .then(result => sendResponse(result));
@@ -473,7 +484,11 @@ function connectBridge() {
             break;
           case 'seek':
             if (typeof msg.time === 'number') {
-              await mediaManager.sendControlCommand('seek', null, msg.time);
+              backgroundLogger.info('[CACP-Seek] bridge WS seek received', { time: msg.time, id: msg.id });
+              const seekResult = await mediaManager.sendControlCommand('seek', null, msg.time);
+              backgroundLogger.info('[CACP-Seek] bridge WS seek result', { time: msg.time, result: seekResult });
+            } else {
+              backgroundLogger.warn('[CACP-Seek] bridge WS seek dropped — msg.time missing or not a number', { msg });
             }
             break;
           default:

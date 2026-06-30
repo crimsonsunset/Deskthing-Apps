@@ -42,7 +42,7 @@ const getProgressPercent = (
  * CACP emulator now-playing shell: artwork, metadata, progress, and transport.
  */
 export default function App() {
-  const { song, isPlaying, sendTransport, togglePlayPause, hasAbility } =
+  const { song, isPlaying, sendTransport, togglePlayPause, hasAbility, sendSeek } =
     useCacpMusic();
 
   if (!song) {
@@ -63,6 +63,31 @@ export default function App() {
     song.track_progress,
     song.track_duration,
   );
+
+  /**
+   * Compute the target position from a progress bar click and send a seek request.
+   * @param {React.MouseEvent<HTMLDivElement>} event
+   */
+  const handleProgressBarClick = (
+    event: React.MouseEvent<HTMLDivElement>,
+  ) => {
+    const durationMs = song.track_duration;
+    if (durationMs == null || durationMs <= 0) {
+      console.warn('[CACP-Seek] App progress click — no track_duration');
+      return;
+    }
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const ratio = Math.max(
+      0,
+      Math.min(1, (event.clientX - rect.left) / rect.width),
+    );
+    const targetMs = Math.round(durationMs * ratio);
+    console.log(
+      `[CACP-Seek] App progress click ratio=${ratio.toFixed(3)} targetMs=${targetMs} durationMs=${durationMs}`,
+    );
+    sendSeek(targetMs);
+  };
 
   return (
     <div className="cacp-app">
@@ -93,7 +118,10 @@ export default function App() {
       </section>
 
       <section className="cacp-progress">
-        <div className="cacp-progress-bar">
+        <div
+          className="cacp-progress-bar cacp-progress-bar-interactive"
+          onClick={handleProgressBarClick}
+        >
           <div
             className="cacp-progress-fill"
             style={{ width: `${progressPercent}%` }}
