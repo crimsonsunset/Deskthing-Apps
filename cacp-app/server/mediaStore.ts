@@ -2,6 +2,7 @@ import { DeskThing } from "@deskthing/server";
 import { SongAbilities, SongData } from "@deskthing/types";
 import type { WebSocket } from 'ws';
 import { saveRemoteImage } from "./imageUtils";
+import { sendDeskThingError, sendDeskThingWarning } from "./deskthing-log.helpers.js";
 
 /**
  * Chrome Extension Message Types
@@ -80,7 +81,7 @@ export class CACPMediaStore {
     });
 
     ws.on('error', (error) => {
-      DeskThing.sendError(`❌ [CACP-MediaStore] WebSocket error: ${error.message}`);
+      sendDeskThingError(`❌ [CACP-MediaStore] WebSocket error: ${error.message}`);
     });
   }
 
@@ -90,7 +91,7 @@ export class CACPMediaStore {
    */
   private sendCommandToExtension(action: string, payload: any = {}) {
     if (!this.extensionWebSocket) {
-      DeskThing.sendWarning(`⚠️ [CACP-MediaStore] No extension WebSocket connection available for command: ${action}`);
+      sendDeskThingWarning(`⚠️ [CACP-MediaStore] No extension WebSocket connection available for command: ${action}`);
       return false;
     }
 
@@ -111,7 +112,7 @@ export class CACPMediaStore {
       console.log(`✅ [CACP-MediaStore] Command sent successfully: ${action}`);
       return true;
     } catch (error: any) {
-      DeskThing.sendError(`❌ [CACP-MediaStore] Failed to send command ${action}: ${error?.message || error}`);
+      sendDeskThingError(`❌ [CACP-MediaStore] Failed to send command ${action}: ${error?.message || error}`);
       return false;
     }
   }
@@ -139,11 +140,11 @@ export class CACPMediaStore {
         console.log(`✅ [CACP-MediaStore] Artwork processed successfully: ${processedPath}`);
         return processedPath;
       } else {
-        DeskThing.sendWarning(`⚠️ [CACP-MediaStore] Failed to process artwork: ${artworkUrl}`);
+        sendDeskThingWarning(`⚠️ [CACP-MediaStore] Failed to process artwork: ${artworkUrl}`);
         return undefined;
       }
     } catch (error: any) {
-      DeskThing.sendError(`❌ [CACP-MediaStore] Artwork processing error: ${error?.message || error}`);
+      sendDeskThingError(`❌ [CACP-MediaStore] Artwork processing error: ${error?.message || error}`);
       return undefined;
     }
   }
@@ -212,7 +213,7 @@ export class CACPMediaStore {
                     }
                   })
                   .catch(error => {
-                    DeskThing.sendError(`❌ [CACP-MediaStore] Artwork processing failed: ${error?.message || error}`);
+                    sendDeskThingError(`❌ [CACP-MediaStore] Artwork processing failed: ${error?.message || error}`);
                   });
               }
 
@@ -269,16 +270,16 @@ export class CACPMediaStore {
           const success = message.success ? 'SUCCESS' : 'FAILED';
           console.log(`🎮 [CACP-MediaStore] Command result for ${action}: ${success}`);
           if (!message.success) {
-            DeskThing.sendError(`❌ [CACP-MediaStore] Command ${action} failed on extension side`);
+            sendDeskThingError(`❌ [CACP-MediaStore] Command ${action} failed on extension side`);
           }
           break;
           
         default:
-          DeskThing.sendWarning(`⚠️ [CACP-MediaStore] Unknown extension message type: ${messageType}`);
+          sendDeskThingWarning(`⚠️ [CACP-MediaStore] Unknown extension message type: ${messageType}`);
       }
       
     } catch (error: any) {
-      DeskThing.sendError(`❌ [CACP-MediaStore] Error processing extension message: ${error?.message || error}`);
+      sendDeskThingError(`❌ [CACP-MediaStore] Error processing extension message: ${error?.message || error}`);
       console.error('Full error:', error);
     }
   }
@@ -340,7 +341,7 @@ export class CACPMediaStore {
       }
 
     } catch (error: any) {
-      DeskThing.sendError(`❌ [CACP-MediaStore] Failed to send data to DeskThing: ${error?.message || error}`);
+      sendDeskThingError(`❌ [CACP-MediaStore] Failed to send data to DeskThing: ${error?.message || error}`);
     }
   }
 
@@ -378,7 +379,7 @@ export class CACPMediaStore {
   }
 
   public handleVolume(data: { volume: number }) {
-    DeskThing.sendWarning('🔊 [CACP-MediaStore] Volume control not supported for browser audio');
+    sendDeskThingWarning('🔊 [CACP-MediaStore] Volume control not supported for browser audio');
   }
 
   public handleShuffle(data: { shuffle: boolean }) {
@@ -387,7 +388,7 @@ export class CACPMediaStore {
   }
 
   public handleRepeat() {
-    DeskThing.sendWarning('🔁 [CACP-MediaStore] Repeat control not yet implemented');
+    sendDeskThingWarning('🔁 [CACP-MediaStore] Repeat control not yet implemented');
   }
 
   public handleGetSong() {

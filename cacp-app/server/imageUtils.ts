@@ -1,4 +1,4 @@
-import { DeskThing } from '@deskthing/server';
+import { sendDeskThingError, sendDeskThingWarning } from './deskthing-log.helpers.js';
 import { existsSync, mkdirSync, writeFile, readdirSync, unlinkSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,7 +20,7 @@ export async function saveBinaryImage(binary: Buffer, fileNameNoExt: string, ext
   await new Promise<void>((resolve, reject) => {
     writeFile(filePath, binary, (err) => {
       if (err) {
-        DeskThing.sendError(`Failed to save image: ${err.message}`);
+        sendDeskThingError(`Failed to save image: ${err.message}`);
         reject(err);
         return;
       }
@@ -35,7 +35,7 @@ export async function saveRemoteImage(url: string, fileNameHint: string): Promis
     ensureImagesDir();
     const res = await fetch(url);
     if (!res.ok) {
-      DeskThing.sendWarning(`Image fetch failed: ${url} (${res.status})`);
+      sendDeskThingWarning(`Image fetch failed: ${url} (${res.status})`);
       return undefined;
     }
     const contentType = res.headers.get('content-type') || '';
@@ -45,7 +45,7 @@ export async function saveRemoteImage(url: string, fileNameHint: string): Promis
     const safeName = fileNameHint.replace(/[^a-z0-9_-]/gi, '_').slice(0, 80) || 'artwork';
     return await saveBinaryImage(buffer, safeName, ext);
   } catch (err: any) {
-    DeskThing.sendWarning(`saveRemoteImage error: ${err?.message || err}`);
+    sendDeskThingWarning(`saveRemoteImage error: ${err?.message || err}`);
     return undefined;
   }
 }

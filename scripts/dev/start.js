@@ -1,8 +1,11 @@
-import { spawn } from 'node:child_process';
+import { spawn, exec } from 'node:child_process';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import { select } from '@inquirer/prompts';
 import { getTerminalType, openInNewTab } from './terminal.helpers.js';
+
+const execAsync = promisify(exec);
 
 const MODES = ['emulator', 'desktop'];
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -74,18 +77,52 @@ function printPortMap() {
 }
 
 /**
- * Spawn a tracked child process.
+ * Open a URL in the default browser (macOS/Linux/Windows).
+ * @param {string} url
+ */
+async function openBrowser(url) {
+  const cmd =
+    process.platform === 'darwin' ? `open "${url}"` :
+    process.platform === 'win32'  ? `start "${url}"` :
+                                    `xdg-open "${url}"`;
+  try {
+    await execAsync(cmd);
+    console.log(`  Opened ${url}`);
+  } catch {
+    console.warn(`  Could not open ${url} automatically — open it manually.`);
+  }
+}
+
+/**
+ * Spawn a tracked child process, piping stdout/stderr to the parent terminal.
+ * Calls onLine(line) for each line of combined output.
  * @param {string} cwd
  * @param {string[]} args
+ * @param {(line: string) => void} [onLine]
  * @returns {import('node:child_process').ChildProcess}
  */
-function spawnTracked(cwd, args) {
+function spawnTracked(cwd, args, onLine) {
   const child = spawn('npm', args, {
     cwd,
-    stdio: 'inherit',
+    stdio: ['ignore', 'pipe', 'pipe'],
     env: process.env,
   });
   childProcesses.push(child);
+
+  /** @param {Buffer} chunk */
+  const forward = (stream, chunk) => {
+    const text = chunk.toString();
+    stream.write(chunk);
+    if (onLine) {
+      for (const line of text.split('\n')) {
+        if (line.trim()) onLine(line);
+      }
+    }
+  };
+
+  child.stdout?.on('data', (chunk) => forward(process.stdout, chunk));
+  child.stderr?.on('data', (chunk) => forward(process.stderr, chunk));
+
   return child;
 }
 
@@ -105,6 +142,7 @@ function killChildren() {
 
 /**
  * Run emulator mode: cacp-app in current terminal, extension in new tab.
+ * Opens http://localhost:3050 in the browser once the emulator is ready.
  * @returns {Promise<number>}
  */
 async function runEmulator() {
@@ -124,7 +162,15 @@ async function runEmulator() {
   console.log('Starting cacp-app in this terminal...\n');
 
   return new Promise((resolve) => {
-    const appProcess = spawnTracked(cacpAppDir, ['run', 'dev']);
+    let browserOpened = false;
+
+    const appProcess = spawnTracked(cacpAppDir, ['run', 'dev'], (line) => {
+      if (!browserOpened && line.includes('Development Server is running')) {
+        browserOpened = true;
+        console.log('\nEmulator ready — opening browser...');
+        void openBrowser('http://localhost:3050');
+      }
+    });
 
     appProcess.on('close', (code) => {
       resolve(code ?? 0);

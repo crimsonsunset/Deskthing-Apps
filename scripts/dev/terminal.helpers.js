@@ -140,6 +140,30 @@ function spawnDetached(cwd, command) {
 }
 
 /**
+ * Ask System Events whether the frontmost Cursor window has a "Terminal" menu
+ * (Standard View) or not (Agent View).
+ * @returns {Promise<boolean>}
+ */
+async function cursorHasTerminalMenu() {
+  const script = `
+    tell application "Cursor" to activate
+    delay 0.2
+    tell application "System Events"
+      tell process "Cursor"
+        return (exists menu "Terminal" of menu bar 1) as string
+      end tell
+    end tell
+  `;
+  const escaped = script.replace(/'/g, "'\"'\"'");
+  try {
+    const { stdout } = await execAsync(`osascript -e '${escaped}'`, { maxBuffer: 4 * 1024 });
+    return stdout.trim() === 'true';
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Open a new terminal tab and run a command in the given directory.
  * @param {'warp'|'iterm'|'apple_terminal'|'cursor'|'vscode'|'unknown'} terminalType
  * @param {string} cwd - Absolute path to working directory
@@ -197,11 +221,79 @@ export async function openInNewTab(terminalType, cwd, command) {
       break;
     }
 
-    case 'cursor':
-    case 'vscode':
+    case 'cursor': {
+      const hasTerminalMenu = await cursorHasTerminalMenu();
+      const raiseAgentsWindow = hasTerminalMenu
+        ? ''
+        : `
+          tell application "System Events"
+            tell process "Cursor"
+              repeat with w in windows
+                try
+                  if name of w is "Cursor Agents" then
+                    perform action "AXRaise" of w
+                    exit repeat
+                  end if
+                end try
+              end repeat
+            end tell
+          end tell
+          delay 0.3
+        `;
+      const newTerminalKeystroke = hasTerminalMenu
+        ? 'keystroke "`" using {control down}'
+        : 'keystroke "`" using {control down, shift down}';
+      const openScript = `
+        tell application "Cursor" to activate
+        delay 0.4
+        ${raiseAgentsWindow}
+        tell application "System Events" to tell process "Cursor" to ${newTerminalKeystroke}
+        delay 1.0
+        tell application "System Events" to keystroke "${escapeForAppleScript(fullCommand)}" & return
+        delay 0.3
+      `;
+      try {
+        await runOsascript(openScript, hasTerminalMenu ? 'Cursor Standard' : 'Cursor Agent');
+      } catch {
+        console.warn('   [Cursor] osascript failed; falling back to Terminal.app');
+        await runOsascript(
+          `tell application "Terminal" to do script "${escapeForAppleScript(fullCommand)}"`,
+          'Terminal.app fallback'
+        );
+      }
+      break;
+    }
+
+    case 'vscode': {
+      const vscodeScript = `
+        tell application "Code" to activate
+        delay 0.4
+        tell application "System Events" to keystroke "p" using {command down, shift down}
+        delay 0.5
+        tell application "System Events" to keystroke "Terminal: Create New Terminal"
+        delay 0.4
+        tell application "System Events" to key code 36
+        delay 1.0
+        tell application "System Events" to keystroke "${escapeForAppleScript(fullCommand)}" & return
+      `;
+      try {
+        await runOsascript(vscodeScript, 'VS Code');
+      } catch {
+        console.warn('   [VS Code] osascript failed; falling back to Terminal.app');
+        await runOsascript(
+          `tell application "Terminal" to do script "${escapeForAppleScript(fullCommand)}"`,
+          'Terminal.app fallback'
+        );
+      }
+      break;
+    }
+
     case 'unknown':
-      console.log(`   [${terminalType}] macOS new-tab opening not supported; spawning detached.`);
-      spawnDetached(cwd, command);
+      console.log(`   [${terminalType}] Unknown terminal; falling back to Terminal.app`);
+      await runOsascript(
+        `tell application "Terminal" to do script "${escapeForAppleScript(fullCommand)}"`,
+        'Terminal.app fallback'
+      );
       break;
 
     default:

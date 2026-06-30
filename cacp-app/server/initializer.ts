@@ -1,6 +1,7 @@
 import { DeskThing } from "@deskthing/server";
 import { AUDIO_REQUESTS, MusicEventPayloads, SongEvent } from "@deskthing/types";
 import { CACPMediaStore } from "./mediaStore";
+import { sendDeskThingWarning } from "./deskthing-log.helpers.js";
 
 /**
  * Initialize DeskThing event listeners for CACP
@@ -32,7 +33,7 @@ DeskThing.on(SongEvent.GET, (data) => {
       mediaStore.handleRefresh();
       break;
     default:
-      DeskThing.sendWarning(`⚠️ [CACP-Initializer] Unknown GET request: ${data.request}`);
+      sendDeskThingWarning(`⚠️ [CACP-Initializer] Unknown GET request: ${data.request}`);
   }
 });
 
@@ -50,7 +51,7 @@ DeskThing.on(SongEvent.SET, (data) => {
       break;
     case AUDIO_REQUESTS.LIKE:
       console.log('📡 [CACP-Initializer] Processing LIKE (not supported)');
-      DeskThing.sendWarning('❤️ [CACP] Liking songs is not supported for browser audio');
+      sendDeskThingWarning('❤️ [CACP] Liking songs is not supported for browser audio');
       break;
     case AUDIO_REQUESTS.NEXT:
       console.log('📡 [CACP-Initializer] Processing NEXT track');
@@ -93,6 +94,6 @@ DeskThing.on(SongEvent.SET, (data) => {
       mediaStore.handleVolume({ volume: data.payload });
       break;
     default:
-      DeskThing.sendWarning(`⚠️ [CACP-Initializer] Unknown SET request: ${data.request}`);
+      sendDeskThingWarning(`⚠️ [CACP-Initializer] Unknown SET request: ${data.request}`);
   }
 });
