@@ -2,6 +2,8 @@
 
 This doc covers how to pull Chrome extension logs and inspect runtime state directly from an agent session, without manual copy-paste from the browser.
 
+For starting the dev stack (emulator, ports, extension loading), see [Local Development](./local-development.md).
+
 ---
 
 ## How It Works

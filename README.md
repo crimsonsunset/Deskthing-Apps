@@ -243,18 +243,19 @@ Multiple Sites → Universal Chrome Extension → CACP App WebSocket (port 8081)
 ## ⚡ **Quick Development Workflow**
 
 ```bash
-# Development (HMR — load dist/ once in Chrome, edits auto-reload)
+# Recommended — from repo root
+npm run install:all
+npm run start:emulator     # cacp-app + extension; open http://localhost:3050
+
+# Extension only (manual)
 cd cacp-extension && npm run dev
 
 # Production build
 cd cacp-app && npm run build
 cd ../cacp-extension && npm run build
-
-# Reload in DeskThing and Chrome after production build
-# Check logs for version confirmation:
-# 🚀 [CACP-Server] Starting enhanced CACP app v0.1.6
-# CACP Extension v1.1.4 initialized
 ```
+
+See [docs/cacp/local-development.md](docs/cacp/local-development.md) for emulator vs desktop modes and troubleshooting.
 
 ---
 

@@ -27,13 +27,15 @@ DeskThing-Apps/
 
 ### **Development Workflow**
 ```bash
-# Setup CACP development environment
-npm run install:all        # Install all dependencies
-npm run dev:cacp           # Start CACP app development
+npm run install:all        # Install all dependencies (includes cacp-extension)
+npm run start:dev          # Interactive emulator/desktop picker
+# or: npm run start:emulator
 
-# Load cacp-extension/ in Chrome Developer Mode
+# Load cacp-extension/dist/ in Chrome Developer Mode (once)
 # Test with your target streaming site
 ```
+
+See [local-development.md](./local-development.md) for ports, startup sequence, and troubleshooting.
 
 ## 🚀 **Quick Start**
 

@@ -25,9 +25,7 @@ DeskThing-Apps/
 │   │   │   ├── soundcloud.js       # SoundCloud handler (functional)
 │   │   │   └── youtube.js          # YouTube handler (present, untested)
 │   │   └── managers/
-│   │       ├── site-detector.js    # URL pattern matching + handler registry
-│   │       ├── priority-manager.js # Multi-source priority scoring
-│   │       └── websocket-manager.js
+│   │       └── site-detector.js    # URL pattern matching + handler registry
 │   ├── logger-config.json  # Logger component config
 │   └── vite.config.js      # CRXJS + Vite (port 5150)
 ├── soundcloud-extension/   # Legacy SoundCloud-only extension (reference)
@@ -44,13 +42,14 @@ DeskThing-Apps/
 ## Quick Start
 
 ```bash
-# Extension dev server (port 5150)
-cd cacp-extension && npm run dev
-# Load dist/ once in Chrome as unpacked extension — HMR handles the rest
-
-# DeskThing app dev (Vite :5050, emulator :3050)
-cd cacp-app && npm run dev
+npm run install:all    # first time only
+npm run start:dev      # interactive: emulator or desktop mode
+# or: npm run start:emulator
 ```
+
+Load `cacp-extension/dist/` once in Chrome as an unpacked extension. Open `http://localhost:3050` for the emulator UI.
+
+See **[Local Development](./local-development.md)** for full port map, startup sequence, and troubleshooting.
 
 ## Port Map
 
@@ -63,6 +62,7 @@ cd cacp-app && npm run dev
 
 ## Documentation
 
+- **[Local Development](./local-development.md)** — Start script, emulator vs desktop, ports, troubleshooting
 - **[Architecture](./architecture.md)** — System design and component overview
 - **[Logging System](./logging-system.md)** — `@crimsonsunset/jsg-logger` usage and config
 - **[DevTools](./devtools.md)** — How to access SW logs via Chrome DevTools MCP
@@ -97,4 +97,4 @@ cd cacp-app && npm run dev
 
 ---
 
-**Last Updated:** June 29, 2026
+**Last Updated:** June 30, 2026

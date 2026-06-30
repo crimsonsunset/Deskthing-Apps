@@ -1,10 +1,11 @@
 # Next Session Planning - CACP Development
 
-*Last Updated: June 29, 2026*
+*Last Updated: June 30, 2026*
 
 ## Current Status
 
 **Branch:** `feature/chrome-audio-control-platform`  
+**Dev entry point:** `npm run start:dev` (or `start:emulator` / `start:desktop`)  
 **Extension dev server:** port `5150`  
 **DeskThing emulator:** port `3050`, Vite on `5050`
 
@@ -36,16 +37,19 @@
 ## Dev Setup
 
 ```bash
-# Extension
-cd cacp-extension && npm run dev    # Vite on :5150, load dist/ once in Chrome
+# Recommended — from repo root
+npm run install:all      # first time
+npm run start:emulator     # cacp-app + extension (new tab)
 
-# App
-cd cacp-app && npm run dev          # DeskThing emulator :3050, Vite :5050
+# Manual fallback (two terminals)
+cd cacp-app && npm run dev
+cd cacp-extension && npm run dev
 
 # Chrome DevTools proxy (for SW logs)
 cd jsg-tech-check/tools/chrome-proxy && bash start-proxy.sh
-# Then: list_pages → get SW id → list_console_messages with serviceWorkerId
 ```
+
+See [docs/cacp/local-development.md](./cacp/local-development.md) for emulator vs desktop modes, port map, and troubleshooting.
 
 ## Architecture Notes
 
