@@ -1,0 +1,161 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #0f1115;
+  color: #f4f4f5;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.cacp-app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  gap: 16px;
+}
+
+.cacp-empty {
+  margin: auto;
+  max-width: 28rem;
+  text-align: center;
+  color: #a1a1aa;
+  line-height: 1.5;
+}
+
+.cacp-now-playing {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.cacp-artwork {
+  width: 120px;
+  height: 120px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #27272a;
+  flex-shrink: 0;
+}
+
+.cacp-artwork-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #71717a;
+  font-size: 0.75rem;
+}
+
+.cacp-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.cacp-title {
+  margin: 0 0 4px;
+  font-size: 1.25rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cacp-artist {
+  margin: 0 0 8px;
+  color: #a1a1aa;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cacp-source {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #71717a;
+}
+
+.cacp-playing-badge {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: #14532d;
+  color: #86efac;
+}
+
+.cacp-playing-badge.is-paused {
+  background: #3f3f46;
+  color: #d4d4d8;
+}
+
+.cacp-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cacp-progress-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: #27272a;
+  overflow: hidden;
+}
+
+.cacp-progress-fill {
+  height: 100%;
+  background: #3b82f6;
+  transition: width 0.3s linear;
+}
+
+.cacp-progress-times {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: #71717a;
+  font-variant-numeric: tabular-nums;
+}
+
+.cacp-transport {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.cacp-transport button {
+  min-width: 72px;
+  padding: 10px 16px;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  background: #18181b;
+  color: #f4f4f5;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.cacp-transport button:hover:not(:disabled) {
+  background: #27272a;
+}
+
+.cacp-transport button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.cacp-transport button.is-primary {
+  min-width: 96px;
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+.cacp-transport button.is-primary:hover:not(:disabled) {
+  background: #2563eb;
+}
