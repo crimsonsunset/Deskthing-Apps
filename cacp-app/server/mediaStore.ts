@@ -1,78 +1,28 @@
 import { DeskThing } from "@deskthing/server";
-import { SongAbilities, SongData } from "@deskthing/types";
+import type { SongData } from "@deskthing/types";
 import type { WebSocket } from 'ws';
 import { saveRemoteImage } from "./imageUtils";
 import { sendDeskThingError, sendDeskThingWarning } from "./deskthing-log.helpers.js";
 import { maybeAutoLookupTracklist } from "./tracklist/tracklist.handlers.js";
+import { planExtensionSongSync } from "./tracklist/tracklist-song-enrichment.helpers.js";
 import {
-  buildTracklistCacheKey,
-  readTracklistCache,
-} from "./tracklist/tracklist-lookup.js";
-import {
-  buildInMixSongFields,
-  findCurrentTracklistTrack,
-} from "./tracklist/tracklist-current-track.helpers.js";
+  handleExtensionWsMessage,
+  sendDisplayMetadataToExtension,
+  type ExtensionDataState,
+  type ExtensionMessage,
+} from "./extension-ws.handlers.js";
 
-/**
- * Chrome Extension Message Types
- */
-interface ExtensionMediaData {
-  title?: string;
-  artist?: string;
-  album?: string;
-  artwork?: string;
-  isPlaying?: boolean;
-  isPaused?: boolean;
-}
-
-interface ExtensionMessage {
-  type: 'mediaData' | 'timeupdate' | 'connection' | 'command-result' | 'ping';
-  site?: string;
-  sourceId?: string | number;
-  data?: ExtensionMediaData;
-  currentTime?: number;
-  duration?: number;
-  isPlaying?: boolean;
-  source?: string;
-  version?: string;
-  action?: string;
-  success?: boolean;
-  commandId?: string;
-  timestamp?: number;
-  detail?: unknown;
-  error?: string;
-  time?: number;
-}
-
-/**
- * Enhanced MediaStore for CACP - Borrowed robust functionality from SoundCloud app
- * Includes comprehensive image processing, logging, and state management
- */
 export class CACPMediaStore {
   private static instance: CACPMediaStore;
-  
-  // Chrome Extension Integration - Enhanced from SoundCloud app
-  private extensionData: {
-    title?: string;
-    artist?: string;
-    album?: string;
-    artwork?: string;
-    processedArtwork?: string; // Local processed artwork path
-    isPlaying?: boolean;
-    position?: number;
-    duration?: number;
-    site?: string;
-    sourceId?: string | number;
-    lastUpdate?: number;
-  } = {};
-  
+  private extensionData: ExtensionDataState = {};
   private extensionWebSocket: WebSocket | null = null;
-  private lastSentPayload: SongData | null = null; // Cache to avoid duplicate sends
+  private lastSentPayload: SongData | null = null;
 
   private constructor() {
     console.log('🎯 [CACP-MediaStore] Initializing enhanced MediaStore with SoundCloud app features');
   }
 
+  /** Returns the singleton MediaStore instance. */
   public static getInstance(): CACPMediaStore {
     if (!CACPMediaStore.instance) {
       CACPMediaStore.instance = new CACPMediaStore();
@@ -80,14 +30,11 @@ export class CACPMediaStore {
     return CACPMediaStore.instance;
   }
 
-  /**
-   * Store WebSocket connection for sending commands to extension
-   * Enhanced with comprehensive logging from SoundCloud app
-   */
+  /** Stores the extension WebSocket for outbound commands and popup sync. */
   public setExtensionWebSocket(ws: WebSocket) {
     console.log('🔗 [CACP-MediaStore] Setting extension WebSocket connection for control commands');
     this.extensionWebSocket = ws;
-    
+
     ws.on('close', () => {
       console.log('🔌 [CACP-MediaStore] Extension WebSocket connection closed');
       this.extensionWebSocket = null;
@@ -98,11 +45,15 @@ export class CACPMediaStore {
     });
   }
 
-  /**
-   * Send command to Chrome extension via WebSocket
-   * Enhanced error handling and logging from SoundCloud app
-   */
-  private sendCommandToExtension(action: string, payload: any = {}) {
+  /** Sends a media command to the Chrome extension over WebSocket. */
+  private sendCommandToExtension(
+    action: string,
+    payload: Record<string, unknown> = {},
+    logLine?: string,
+  ) {
+    if (logLine) {
+      console.log(logLine);
+    }
     if (!this.extensionWebSocket) {
       sendDeskThingWarning(`⚠️ [CACP-MediaStore] No extension WebSocket connection available for command: ${action}`);
       return false;
@@ -116,26 +67,24 @@ export class CACPMediaStore {
       ...payload
     };
 
-    // Enhanced logging for all commands
     if (action === 'seek') {
       console.log(`[CACP-Seek] mediaStore WS outbound action=seek time=${payload.time} hasSocket=${!!this.extensionWebSocket}`);
     }
     console.log(`🎮 [CACP-MediaStore] Sending command to extension: ${action}`);
     console.log(`📋 [CACP-MediaStore] Command payload:`, JSON.stringify(command, null, 2));
-    
+
     try {
       this.extensionWebSocket.send(JSON.stringify(command));
       console.log(`✅ [CACP-MediaStore] Command sent successfully: ${action}`);
       return true;
-    } catch (error: any) {
-      sendDeskThingError(`❌ [CACP-MediaStore] Failed to send command ${action}: ${error?.message || error}`);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      sendDeskThingError(`❌ [CACP-MediaStore] Failed to send command ${action}: ${message}`);
       return false;
     }
   }
 
-  /**
-   * Process artwork URL and save locally (borrowed from SoundCloud app)
-   */
+  /** Downloads and caches remote artwork locally. */
   private async processArtwork(artworkUrl: string, title?: string, artist?: string): Promise<string | undefined> {
     if (!artworkUrl) {
       console.log('🖼️ [CACP-MediaStore] No artwork URL provided');
@@ -144,345 +93,95 @@ export class CACPMediaStore {
 
     try {
       console.log(`🖼️ [CACP-MediaStore] Processing artwork: ${artworkUrl}`);
-      
-      // Create safe filename from track info
+
       const safeFileName = `${title || 'unknown'}-${artist || 'unknown'}`
         .replace(/[<>:"/\\|?*]/g, '_')
-        .slice(0, 100); // Limit length
-      
+        .slice(0, 100);
+
       const processedPath = await saveRemoteImage(artworkUrl, safeFileName);
-      
+
       if (processedPath) {
         console.log(`✅ [CACP-MediaStore] Artwork processed successfully: ${processedPath}`);
         return processedPath;
-      } else {
-        sendDeskThingWarning(`⚠️ [CACP-MediaStore] Failed to process artwork: ${artworkUrl}`);
-        return undefined;
       }
-    } catch (error: any) {
-      sendDeskThingError(`❌ [CACP-MediaStore] Artwork processing error: ${error?.message || error}`);
+
+      sendDeskThingWarning(`⚠️ [CACP-MediaStore] Failed to process artwork: ${artworkUrl}`);
+      return undefined;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      sendDeskThingError(`❌ [CACP-MediaStore] Artwork processing error: ${message}`);
       return undefined;
     }
   }
 
-  /**
-   * Handle Chrome Extension WebSocket messages
-   * Enhanced with image processing and comprehensive logging from SoundCloud app
-   */
+  /** Delegates inbound extension WS messages to the routing handler module. */
   public async handleExtensionMessage(message: ExtensionMessage) {
-    try {
-      const messageType = message.type || 'unknown';
-      console.log(`📨 [CACP-MediaStore] Processing extension message: ${messageType}`);
-      
-      switch (message.type) {
-        case 'connection':
-          console.log(`🔗 [CACP-MediaStore] Extension connected: ${message.source} v${message.version} site=${message.site}`);
-          break;
-          
-        case 'mediaData':
-          if (message.data) {
-            console.log(`🎵 [CACP-MediaStore] Received media data from ${message.site || 'unknown site'}`);
-            
-            // Track changes for smart updates
-            const hasChanges = (
-              message.data.title !== this.extensionData.title ||
-              message.data.artist !== this.extensionData.artist ||
-              message.data.album !== this.extensionData.album ||
-              message.data.artwork !== this.extensionData.artwork ||
-              message.data.isPlaying !== this.extensionData.isPlaying
-            );
-
-            if (hasChanges) {
-              console.log(`🔄 [CACP-MediaStore] Media data changed, updating cache`);
-              
-              // Update media metadata
-              if (message.data.title !== undefined) {
-                this.extensionData.title = message.data.title;
-                console.log(`🎵 [CACP-MediaStore] Title: "${message.data.title}"`);
-              }
-              if (message.data.artist !== undefined) {
-                this.extensionData.artist = message.data.artist;
-                console.log(`👤 [CACP-MediaStore] Artist: "${message.data.artist}"`);
-              }
-              if (message.data.album !== undefined) {
-                this.extensionData.album = message.data.album;
-                console.log(`💿 [CACP-MediaStore] Album: "${message.data.album}"`);
-              }
-              if (message.data.isPlaying !== undefined) {
-                this.extensionData.isPlaying = message.data.isPlaying;
-                console.log(`▶️ [CACP-MediaStore] Playing: ${message.data.isPlaying}`);
-              }
-
-              // Process artwork if changed (borrowed from SoundCloud app)
-              if (message.data.artwork && message.data.artwork !== this.extensionData.artwork) {
-                console.log(`🖼️ [CACP-MediaStore] New artwork detected: ${message.data.artwork}`);
-                this.extensionData.artwork = message.data.artwork;
-                
-                // Process artwork asynchronously
-                this.processArtwork(message.data.artwork, this.extensionData.title, this.extensionData.artist)
-                  .then(processedPath => {
-                    if (processedPath) {
-                      this.extensionData.processedArtwork = processedPath;
-                      console.log(`✅ [CACP-MediaStore] Artwork cached: ${processedPath}`);
-                      // Send updated data with processed artwork
-                      this.sendExtensionDataToDeskThing();
-                    }
-                  })
-                  .catch(error => {
-                    sendDeskThingError(`❌ [CACP-MediaStore] Artwork processing failed: ${error?.message || error}`);
-                  });
-              }
-
-              this.extensionData.site = message.site;
-              this.extensionData.sourceId = message.sourceId;
-              this.extensionData.lastUpdate = Date.now();
-              
-              this.sendExtensionDataToDeskThing();
-            } else {
-              console.log(`📋 [CACP-MediaStore] No media data changes detected, skipping update`);
-            }
-          }
-          break;
-          
-        case 'timeupdate':
-          // Update timing information with throttling
-          const timeChanged = (
-            message.currentTime !== this.extensionData.position ||
-            message.duration !== this.extensionData.duration ||
-            message.isPlaying !== this.extensionData.isPlaying
-          );
-
-          if (timeChanged) {
-            if (message.currentTime !== undefined) {
-              this.extensionData.position = message.currentTime;
-            }
-            if (message.duration !== undefined) {
-              this.extensionData.duration = message.duration;
-            }
-            if (message.isPlaying !== undefined) {
-              this.extensionData.isPlaying = message.isPlaying;
-            }
-            
-            this.extensionData.lastUpdate = Date.now();
-            
-            // Log progress periodically (every 10 seconds or on state change)
-            const now = Date.now();
-            const timeSinceLastLog = now - (this.extensionData.lastUpdate || 0);
-            const shouldLog = message.isPlaying !== this.extensionData.isPlaying || timeSinceLastLog > 10000;
-            
-            if (shouldLog) {
-              const pos = this.extensionData.position || 0;
-              const dur = this.extensionData.duration || 0;
-              const percent = dur > 0 ? Math.round((pos / dur) * 100) : 0;
-              console.log(`⏱️ [CACP-MediaStore] Progress: ${Math.round(pos)}s/${Math.round(dur)}s (${percent}%) playing=${this.extensionData.isPlaying}`);
-            }
-            
-            this.sendExtensionDataToDeskThing();
-          }
-          break;
-          
-        case 'command-result': {
-          const action = message.action || 'unknown';
-          const success = message.success ? 'SUCCESS' : 'FAILED';
-          console.log(`🎮 [CACP-MediaStore] Command result for ${action}: ${success}`);
-          if (action === 'seek') {
-            console.log('[CACP-Seek] mediaStore command-result', {
-              requestedTimeSeconds: message.time,
-              success: message.success,
-              detail: message.detail ?? null,
-              error: message.error || null,
-              cachedPositionSeconds: this.extensionData.position ?? 0,
-              cachedDurationSeconds: this.extensionData.duration ?? 0,
-            });
-          }
-          if (!message.success) {
-            sendDeskThingError(`❌ [CACP-MediaStore] Command ${action} failed on extension side: ${message.error || JSON.stringify(message.detail) || 'unknown reason'}`);
-          }
-          break;
-        }
-
-        case 'ping':
-          this.sendPongToExtension(message.timestamp);
-          break;
-          
-        default:
-          console.log(`📋 [CACP-MediaStore] Unknown extension message type: ${messageType}`);
-      }
-      
-    } catch (error: any) {
-      sendDeskThingError(`❌ [CACP-MediaStore] Error processing extension message: ${error?.message || error}`);
-      console.error('Full error:', error);
-    }
+    await handleExtensionWsMessage(message, {
+      extensionData: this.extensionData,
+      getWebSocket: () => this.extensionWebSocket,
+      processArtwork: (url, title, artist) => this.processArtwork(url, title, artist),
+      onRefreshDeskThing: () => this.sendExtensionDataToDeskThing(),
+    });
   }
 
-  /**
-   * Replies to extension WS keepalive ping per docs/cacp/api-reference.md.
-   * @param {number} [pingTimestamp] - Timestamp from the ping payload, if present
-   */
-  private sendPongToExtension(pingTimestamp?: number): void {
-    if (!this.extensionWebSocket) {
-      console.log('📋 [CACP-MediaStore] Ping received but no extension WebSocket to reply on');
-      return;
-    }
-
-    const payload = {
-      type: 'pong',
-      timestamp: pingTimestamp ?? Date.now(),
-    };
-
-    try {
-      this.extensionWebSocket.send(JSON.stringify(payload));
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.log(`📋 [CACP-MediaStore] Failed to send pong: ${message}`);
-    }
-  }
-
-  /**
-   * Pushes enriched display metadata to the extension popup via the WS bridge.
-   * @param {object} display - Format A fields for popup rendering.
-   */
-  private sendDisplayMetadataToExtension(display: {
-    title: string;
-    artist: string | null;
-    thumbnail: string | null;
-    mixTitle: string;
-    mixArtist: string;
-    inMixOrder?: number;
-  }) {
-    if (!this.extensionWebSocket) {
-      return;
-    }
-
-    try {
-      this.extensionWebSocket.send(JSON.stringify({
-        type: 'displayMetadata',
-        ...display,
-        timestamp: Date.now(),
-      }));
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      sendDeskThingWarning(`⚠️ [CACP-MediaStore] Failed to send displayMetadata: ${message}`);
-    }
-  }
-
-  /**
-   * Send Chrome Extension data to DeskThing in the expected format
-   * Enhanced with comprehensive logging and data validation from SoundCloud app
-   */
+  /** Enriches extension state with tracklist data, dedupes, and sends SongData to DeskThing. */
   private sendExtensionDataToDeskThing() {
-    const rawTitle = this.extensionData.title || '';
-    const rawArtist = this.extensionData.artist || '';
-
-    if (!rawTitle && !rawArtist) {
-      console.log('📋 [CACP-MediaStore] No meaningful data to send (missing title and artist)');
-      return;
-    }
-
     try {
-      const mixThumbnail = this.extensionData.processedArtwork || this.extensionData.artwork || null;
-      const progressMs = this.extensionData.position
-        ? Math.round(this.extensionData.position * 1000)
-        : null;
-
-      let trackName = rawTitle || 'Unknown Track';
-      let artistLine: string | null = rawArtist || null;
-      let thumbnail: string | null = mixThumbnail;
-      let thumbnailRemote: string | null = mixThumbnail?.startsWith('http') ? mixThumbnail : null;
-      let inMixOrder: number | undefined;
-
-      const cacheKey = buildTracklistCacheKey(rawArtist, rawTitle);
-      const cached = readTracklistCache(cacheKey);
-      if (cached?.tracks.length) {
-        const current = findCurrentTracklistTrack(cached.tracks, progressMs);
-        if (current) {
-          const enriched = buildInMixSongFields(current, rawTitle, rawArtist, mixThumbnail);
-          trackName = enriched.track_name;
-          artistLine = enriched.artist;
-          thumbnail = enriched.thumbnail;
-          thumbnailRemote = enriched.thumbnailRemote;
-          inMixOrder = enriched.inMixOrder;
-        }
+      const plan = planExtensionSongSync(this.extensionData, this.lastSentPayload);
+      if (!plan) {
+        console.log('📋 [CACP-MediaStore] No meaningful data to send (missing title and artist)');
+        return;
       }
 
-      const musicPayload: SongData = {
-        version: 2,
-        album: this.extensionData.album || null,
-        artist: artistLine,
-        playlist: null,
-        playlist_id: null,
-        track_name: trackName,
-        shuffle_state: null,
-        repeat_state: "off",
-        is_playing: this.extensionData.isPlaying || false,
-        abilities: [
-          SongAbilities.NEXT,
-          SongAbilities.PREVIOUS,
-          SongAbilities.PLAY,
-          SongAbilities.PAUSE
-        ],
-        track_duration: this.extensionData.duration ? Math.round(this.extensionData.duration * 1000) : null,
-        track_progress: progressMs,
-        volume: 0,
-        thumbnail,
-        device: `CACP Extension (${this.extensionData.site || 'unknown'})`,
-        id: this.extensionData.sourceId?.toString() || null,
-        device_id: 'cacp-extension',
-        source: this.extensionData.site || 'cacp-extension'
-      };
-
-      const payloadKey = `${musicPayload.track_name}-${musicPayload.artist}-${musicPayload.is_playing}-${musicPayload.track_progress}-${musicPayload.thumbnail ?? ''}`;
-      const lastKey = this.lastSentPayload ?
-        `${this.lastSentPayload.track_name}-${this.lastSentPayload.artist}-${this.lastSentPayload.is_playing}-${this.lastSentPayload.track_progress}-${this.lastSentPayload.thumbnail ?? ''}` :
-        null;
-
-      if (payloadKey !== lastKey) {
-        console.log(`📤 [CACP-MediaStore] Sending to DeskThing: "${musicPayload.track_name}" by "${musicPayload.artist}" (${musicPayload.is_playing ? 'PLAYING' : 'PAUSED'})`);
-        if (musicPayload.thumbnail) {
-          console.log(`🖼️ [CACP-MediaStore] Including artwork: ${musicPayload.thumbnail}`);
-        }
-
-        DeskThing.sendSong(musicPayload);
-        this.lastSentPayload = musicPayload;
-        maybeAutoLookupTracklist(rawArtist, rawTitle);
-        this.sendDisplayMetadataToExtension({
-          title: trackName,
-          artist: artistLine,
-          thumbnail: thumbnailRemote,
-          mixTitle: rawTitle,
-          mixArtist: rawArtist,
-          inMixOrder,
-        });
-      } else {
+      if (plan.isDuplicate) {
         console.log('📋 [CACP-MediaStore] Skipping duplicate payload');
+        return;
       }
 
-    } catch (error: any) {
-      sendDeskThingError(`❌ [CACP-MediaStore] Failed to send data to DeskThing: ${error?.message || error}`);
+      const { musicPayload, enriched, rawTitle, rawArtist } = plan;
+      console.log(`📤 [CACP-MediaStore] Sending to DeskThing: "${musicPayload.track_name}" by "${musicPayload.artist}" (${musicPayload.is_playing ? 'PLAYING' : 'PAUSED'})`);
+      if (musicPayload.thumbnail) {
+        console.log(`🖼️ [CACP-MediaStore] Including artwork: ${musicPayload.thumbnail}`);
+      }
+
+      DeskThing.sendSong(musicPayload);
+      this.lastSentPayload = musicPayload;
+      maybeAutoLookupTracklist(rawArtist, rawTitle);
+      sendDisplayMetadataToExtension(this.extensionWebSocket, {
+        title: enriched.trackName,
+        artist: enriched.artistLine,
+        thumbnail: enriched.thumbnailRemote,
+        mixTitle: rawTitle,
+        mixArtist: rawArtist,
+        inMixOrder: enriched.inMixOrder,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      sendDeskThingError(`❌ [CACP-MediaStore] Failed to send data to DeskThing: ${message}`);
     }
   }
 
-  // Enhanced control methods with comprehensive logging (borrowed from SoundCloud app)
+  /** Requests next track from the extension. */
   public handleNext() {
-    console.log('⏭️ [CACP-MediaStore] Next track requested');
-    this.sendCommandToExtension('nexttrack');
+    this.sendCommandToExtension('nexttrack', {}, '⏭️ [CACP-MediaStore] Next track requested');
   }
 
+  /** Requests previous track from the extension. */
   public handlePrevious() {
-    console.log('⏮️ [CACP-MediaStore] Previous track requested');
-    this.sendCommandToExtension('previoustrack');
+    this.sendCommandToExtension('previoustrack', {}, '⏮️ [CACP-MediaStore] Previous track requested');
   }
 
+  /** Requests play from the extension. */
   public handlePlay() {
-    console.log('▶️ [CACP-MediaStore] Play requested');
-    this.sendCommandToExtension('play');
+    this.sendCommandToExtension('play', {}, '▶️ [CACP-MediaStore] Play requested');
   }
 
+  /** Requests pause from the extension. */
   public handlePause() {
-    console.log('⏸️ [CACP-MediaStore] Pause requested');
-    this.sendCommandToExtension('pause');
+    this.sendCommandToExtension('pause', {}, '⏸️ [CACP-MediaStore] Pause requested');
   }
 
+  /** Seeks playback to the given position via the extension. */
   public handleSeek(data: { positionMs: number }) {
     if (data.positionMs == null || Number.isNaN(data.positionMs)) {
       console.warn(`[CACP-Seek] mediaStore handleSeek rejected — invalid positionMs: ${data.positionMs}`);
@@ -511,43 +210,53 @@ export class CACPMediaStore {
       console.log('[CACP-Seek] mediaStore seek — no extension duration cached yet');
     }
 
-    const sent = this.sendCommandToExtension('seek', { time: seconds });
+    const sent = this.sendCommandToExtension(
+      'seek',
+      { time: seconds },
+      `[CACP-Seek] mediaStore WS seek command time=${seconds}s`,
+    );
     console.log(`[CACP-Seek] mediaStore WS seek command sent=${sent}`);
   }
 
+  /** Volume control is not supported for browser audio. */
   public handleVolume(data: { volume: number }) {
-    sendDeskThingWarning('🔊 [CACP-MediaStore] Volume control not supported for browser audio');
+    sendDeskThingWarning(`🔊 [CACP-MediaStore] Volume control not supported for browser audio (requested ${data.volume})`);
   }
 
+  /** Toggles shuffle via the extension. */
   public handleShuffle(data: { shuffle: boolean }) {
-    console.log(`🔀 [CACP-MediaStore] Shuffle ${data.shuffle ? 'ON' : 'OFF'} requested`);
-    this.sendCommandToExtension('shuffle', { shuffle: data.shuffle });
+    this.sendCommandToExtension(
+      'shuffle',
+      { shuffle: data.shuffle },
+      `🔀 [CACP-MediaStore] Shuffle ${data.shuffle ? 'ON' : 'OFF'} requested`,
+    );
   }
 
+  /** Repeat control is not yet implemented. */
   public handleRepeat() {
     sendDeskThingWarning('🔁 [CACP-MediaStore] Repeat control not yet implemented');
   }
 
+  /** Re-sends current song state to DeskThing. */
   public handleGetSong() {
     console.log('📡 [CACP-MediaStore] GET song request - sending current data');
     this.sendExtensionDataToDeskThing();
   }
 
+  /** Re-sends current song state to DeskThing. */
   public handleRefresh() {
     console.log('🔄 [CACP-MediaStore] REFRESH request - sending current data');
     this.sendExtensionDataToDeskThing();
   }
 
-  /**
-   * Re-sends song state after a tracklist lookup completes (clears dedupe cache).
-   */
+  /** Re-sends song state after tracklist lookup completes (clears dedupe cache). */
   public handleTracklistReady() {
     console.log('🎧 [CACP-MediaStore] Tracklist ready — forcing display refresh');
     this.lastSentPayload = null;
     this.sendExtensionDataToDeskThing();
   }
 
-  // Lifecycle methods
+  /** Clears connection and cached extension state. */
   public stop() {
     console.log('🛑 [CACP-MediaStore] Stopping MediaStore');
     this.extensionWebSocket = null;
@@ -555,12 +264,13 @@ export class CACPMediaStore {
     this.lastSentPayload = null;
   }
 
+  /** Purges all MediaStore data and stops the store. */
   public purge() {
     console.log('🧹 [CACP-MediaStore] Purging MediaStore data');
     this.stop();
   }
 
-  // Debug methods
+  /** Returns a snapshot of current MediaStore status for debugging. */
   public getStatus() {
     return {
       hasConnection: !!this.extensionWebSocket,
