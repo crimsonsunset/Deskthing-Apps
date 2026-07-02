@@ -3,7 +3,6 @@ import {
   type MatchResponse,
   type SearchCandidate,
 } from './tracklist.types.js';
-import { getOpenRouterApiKey } from '../initSettings.js';
 import { tracklistLogger } from '../logger.helpers.js';
 
 const OPENROUTER_CHAT_COMPLETIONS_URL = 'https://openrouter.ai/api/v1/chat/completions';
@@ -17,6 +16,14 @@ type OpenRouterChatCompletionResponse = {
     };
   }>;
 };
+
+/**
+ * Reads OPENROUTER_API_KEY from process.env (set via cacp-app/.env at dev startup).
+ * @returns {string | null} Trimmed API key, or null when unset.
+ */
+function getOpenRouterApiKey(): string | null {
+  return process.env.OPENROUTER_API_KEY?.trim() || null;
+}
 
 /**
  * Strips optional markdown code fences from an LLM response before JSON parsing.
@@ -65,7 +72,7 @@ function buildMatchPrompt(query: string, candidates: SearchCandidate[]): string 
 
 /**
  * Calls OpenRouter chat completions and returns validated match JSON.
- * @param {string} apiKey - OpenRouter API key from DeskThing settings.
+ * @param {string} apiKey - OpenRouter API key from cacp-app/.env.
  * @param {string} prompt - Matcher prompt.
  * @returns {Promise<MatchResponse>} Parsed and schema-validated match result.
  */
@@ -139,9 +146,9 @@ export async function matchBestCandidate(
     });
   }
 
-  const apiKey = await getOpenRouterApiKey();
+  const apiKey = getOpenRouterApiKey();
   if (!apiKey) {
-    throw new Error('OPENROUTER_API_KEY is not configured in DeskThing settings');
+    throw new Error('OPENROUTER_API_KEY is not set in cacp-app/.env');
   }
 
   tracklistLogger.debug(`Calling OpenRouter (${MATCHER_MODEL})`);

@@ -3,7 +3,7 @@ import { tracklistLogger } from '../logger.helpers.js';
 
 /**
  * One-off manual validation: full lookup pipeline for Nora En Pure Purified #512.
- * Requires Gondor Chrome with remote debugging + OPENROUTER_API_KEY in env or .env.
+ * Requires Gondor Chrome with remote debugging + OPENROUTER_API_KEY in cacp-app/.env.
  */
 async function main(): Promise<void> {
   const result = await lookupTracklist('Nora En Pure', 'Purified #512');
