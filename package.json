@@ -25,6 +25,8 @@
     "start:emulator": "node scripts/dev/start.js --mode=emulator",
     "start:desktop": "node scripts/dev/start.js --mode=desktop",
     "kill": "node scripts/dev/kill.js",
+    "restart": "npm run kill && npm run start:emulator",
+    "restart:desktop": "npm run kill && npm run start:desktop",
     "debug-music": "node scripts/music-debug.js",
     "player:control": "node scripts/player-control.js",
     "kill-port": "node scripts/kill-port-8080.js",

@@ -112,10 +112,20 @@ function spawnTracked(cwd, args, onLine) {
   });
   childProcesses.push(child);
 
-  /** @param {Buffer} chunk */
-  const forward = (stream, chunk) => {
+  /**
+   * Forward a chunk to the parent's stdout/stderr, pausing the child stream
+   * on backpressure so a burst of dev-server logging can't pile up in memory.
+   * @param {NodeJS.WritableStream} stream
+   * @param {NodeJS.ReadableStream} childStream
+   * @param {Buffer} chunk
+   */
+  const forward = (stream, childStream, chunk) => {
     const text = chunk.toString();
-    stream.write(chunk);
+    const canWriteMore = stream.write(chunk);
+    if (!canWriteMore) {
+      childStream.pause();
+      stream.once('drain', () => childStream.resume());
+    }
     if (onLine) {
       for (const line of text.split('\n')) {
         if (line.trim()) onLine(line);
@@ -123,8 +133,8 @@ function spawnTracked(cwd, args, onLine) {
     }
   };
 
-  child.stdout?.on('data', (chunk) => forward(process.stdout, chunk));
-  child.stderr?.on('data', (chunk) => forward(process.stderr, chunk));
+  child.stdout?.on('data', (chunk) => forward(process.stdout, child.stdout, chunk));
+  child.stderr?.on('data', (chunk) => forward(process.stderr, child.stderr, chunk));
 
   return child;
 }
