@@ -262,6 +262,33 @@ export class SiteHandler {
   }
 
   /**
+   * Whether the progress bar element supports seeking.
+   * @param {Element} progressBar - Progress bar element from config selectors
+   * @returns {boolean} True when the bar is present and has measurable width
+   */
+  isSeekable(progressBar) {
+    if (!progressBar) {
+      return false;
+    }
+
+    const rect = progressBar.getBoundingClientRect();
+    return rect.width > 0;
+  }
+
+  /**
+   * Seeks by clicking the progress bar at a horizontal percentage.
+   * @param {Element} progressBar - Progress bar element
+   * @param {number} percentage - Target position from 0 to 1
+   */
+  seekToPercentage(progressBar, percentage) {
+    const rect = progressBar.getBoundingClientRect();
+    const clamped = Math.max(0, Math.min(1, percentage));
+    const x = rect.left + rect.width * clamped;
+    const y = rect.top + rect.height / 2;
+    this.clickAtPosition(progressBar, x, y);
+  }
+
+  /**
    * Seek to specific time
    * @param {number} time Time in seconds
    * @returns {boolean} Success

@@ -198,7 +198,7 @@ export class CACPMediaStore {
       return;
     }
 
-    const seconds = Math.round(data.positionMs / 1000);
+    const seconds = data.positionMs / 1000;
     const cachedPosition = this.extensionData.position ?? 0;
     const cachedDuration = this.extensionData.duration ?? 0;
 
@@ -226,6 +226,13 @@ export class CACPMediaStore {
       `WS seek command time=${seconds}s`,
     );
     mediastoreLogger.debug(`WS seek command sent=${sent}`);
+
+    if (sent) {
+      this.extensionData.position = seconds;
+      this.extensionData.lastUpdate = Date.now();
+      this.lastSentPayload = null;
+      this.sendExtensionDataToDeskThing();
+    }
   }
 
   /** Volume control is not supported for browser audio. */

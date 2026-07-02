@@ -154,3 +154,33 @@ export const formatCueSeconds = (cueSeconds: number | null): string => {
   const seconds = cueSeconds % 60;
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 };
+
+/**
+ * Computes how long a tracklist row plays for, from the gap to the next cue.
+ * The last row falls back to the mix's total duration when available.
+ * @param {TracklistTrackView[]} tracks - Ordered tracklist rows (sorted by cue).
+ * @param {number} index - Index of the row to compute duration for.
+ * @param {number | null} [mixDurationSeconds] - Total mix duration, for the last row.
+ * @returns {number | null} Duration in seconds, or null when it can't be determined.
+ */
+export const getTrackDurationSeconds = (
+  tracks: TracklistTrackView[],
+  index: number,
+  mixDurationSeconds?: number | null,
+): number | null => {
+  const track = tracks[index];
+  if (track?.cueSeconds == null) {
+    return null;
+  }
+
+  const nextCueSeconds = tracks[index + 1]?.cueSeconds;
+  if (nextCueSeconds != null) {
+    return nextCueSeconds - track.cueSeconds;
+  }
+
+  if (mixDurationSeconds != null && mixDurationSeconds > track.cueSeconds) {
+    return mixDurationSeconds - track.cueSeconds;
+  }
+
+  return null;
+};

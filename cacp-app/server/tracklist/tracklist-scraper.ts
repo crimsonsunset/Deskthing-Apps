@@ -158,8 +158,18 @@ export async function searchTracklists(
     }
 
     tracklistLogger.debug('Submitting search query', { selector: SEARCH_INPUT_SELECTOR, query });
-    await page.click(SEARCH_INPUT_SELECTOR);
-    await page.keyboard.type(query, { delay: 50 });
+    await page.bringToFront();
+    await page.focus(SEARCH_INPUT_SELECTOR);
+    await page.$eval(
+      SEARCH_INPUT_SELECTOR,
+      (input, value) => {
+        const el = input as HTMLInputElement;
+        el.value = value;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      },
+      query,
+    );
     await page.keyboard.press('Enter');
 
     tracklistLogger.debug('Waiting for search results navigation', {

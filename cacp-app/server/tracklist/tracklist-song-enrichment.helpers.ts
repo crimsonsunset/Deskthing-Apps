@@ -51,6 +51,16 @@ export function enrichSongWithTracklist(
   if (cached?.tracks.length) {
     const current = findCurrentTracklistTrack(cached.tracks, progressMs);
     if (current) {
+      const cueMs = current.cueSeconds != null ? current.cueSeconds * 1000 : null;
+      tracklistLogger.info('[CACP-Seek] cue-match', {
+        cacheKey,
+        progressMs,
+        matchedOrder: current.order,
+        cueSeconds: current.cueSeconds,
+        deltaFromCueMs: cueMs != null && progressMs != null ? progressMs - cueMs : null,
+        artist: current.artist,
+        title: current.title,
+      });
       tracklistLogger.debug('In-mix enrichment applied', {
         cacheKey,
         progressMs,
@@ -66,6 +76,13 @@ export function enrichSongWithTracklist(
       thumbnailRemote = enriched.thumbnailRemote;
       inMixOrder = enriched.inMixOrder;
     } else {
+      tracklistLogger.info('[CACP-Seek] cue-match', {
+        cacheKey,
+        progressMs,
+        matchedOrder: null,
+        trackCount: cached.tracks.length,
+        firstCueSeconds: cached.tracks[0]?.cueSeconds ?? null,
+      });
       tracklistLogger.debug('Tracklist cached but no in-mix row for progress', {
         cacheKey,
         progressMs,
@@ -163,7 +180,8 @@ export function planExtensionSongSync(
   }
 
   const mixThumbnail = extensionData.processedArtwork || extensionData.artwork || null;
-  const progressMs = extensionData.position ? Math.round(extensionData.position * 1000) : null;
+  const progressMs =
+    extensionData.position != null ? Math.round(extensionData.position * 1000) : null;
   const enriched = enrichSongWithTracklist(
     { rawTitle, rawArtist, mixThumbnail },
     buildTracklistCacheKey(rawArtist, rawTitle),

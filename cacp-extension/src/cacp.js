@@ -520,8 +520,10 @@ class CACPMediaSource {
 
     /**
      * Report current media state to background script
+     * @param {{ force?: boolean }} [options] - When force is true, skip hasStateChanged gating (e.g. after seek)
      */
-    async reportMediaState() {
+    async reportMediaState(options = {}) {
+        const { force = false } = options;
         if (!this.isRegistered) {
             this.log.debug('reportMediaState: skipping — not registered');
             return;
@@ -535,7 +537,7 @@ class CACPMediaSource {
         try {
             const currentState = this.getCurrentMediaState();
 
-            if (!this.hasStateChanged(currentState)) {
+            if (!force && !this.hasStateChanged(currentState)) {
                 this.log.trace('reportMediaState: skipping — state unchanged', {
                     site: this.activeSiteName,
                     isPlaying: currentState.isPlaying,
@@ -687,8 +689,14 @@ class CACPMediaSource {
                     return {success: false, error: `Unknown command: ${command}`};
             }
 
-            // Force immediate state report after control
-            setTimeout(() => this.reportMediaState(), 100);
+            // Force position reports after seek — streaming seeks may not land within 100ms
+            if (command === 'seek') {
+                setTimeout(() => this.reportMediaState({ force: true }), 100);
+                setTimeout(() => this.reportMediaState({ force: true }), 500);
+                setTimeout(() => this.reportMediaState({ force: true }), 1200);
+            } else {
+                setTimeout(() => this.reportMediaState({ force: true }), 100);
+            }
 
             const success = result && typeof result === 'object' && 'success' in result
                 ? !!result.success

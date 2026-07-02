@@ -648,6 +648,236 @@ export class SoundCloudHandler extends SiteHandler {
   }
 
   /**
+   * Finds the progress bar wrapper used for click-to-seek.
+   * @returns {Element | null} Clickable progress bar container
+   */
+  findProgressBarWrapper() {
+    return document.querySelector('.playbackTimeline__progressWrapper[role="progressbar"]')
+      || document.querySelector('.playbackTimeline [role="progressbar"]')
+      || (() => {
+        const progressBar = this.getElement(this.constructor.config.selectors.progressBar);
+        return progressBar?.parentElement ?? null;
+      })();
+  }
+
+  /**
+   * Resolves viewport coordinates and the element under the pointer for a progress-bar seek.
+   * @param {number} time - Target position in seconds
+   * @param {number} duration - Mix duration in seconds
+   * @returns {{ clickable: Element, hitElement: Element, clickX: number, clickY: number, percentage: number, rect: DOMRect } | null}
+   */
+  resolveProgressBarSeekClick(time, duration) {
+    const clickable = this.findProgressBarWrapper();
+    if (!clickable || duration <= 0) {
+      return null;
+    }
+
+    const rect = clickable.getBoundingClientRect();
+    if (rect.width <= 0) {
+      return null;
+    }
+
+    const percentage = Math.max(0, Math.min(1, time / duration));
+    const clickX = rect.left + rect.width * percentage;
+    const clickY = rect.top + rect.height / 2;
+    const hitElement = document.elementFromPoint(clickX, clickY);
+    const target = hitElement && clickable.contains(hitElement) ? hitElement : clickable;
+
+    return { clickable, hitElement: target, clickX, clickY, percentage, rect };
+  }
+
+  /**
+   * Dispatches pointer and mouse events at viewport coordinates on the seek target.
+   * SoundCloud's player often listens on the element under the cursor (bar, fill, or handle),
+   * not the outer wrapper — elementFromPoint picks that node.
+   * @param {Element} target - Element to receive synthetic events
+   * @param {number} clickX - Viewport X coordinate
+   * @param {number} clickY - Viewport Y coordinate
+   */
+  dispatchSeekPointerClick(target, clickX, clickY) {
+    const pointerBase = {
+      bubbles: true,
+      cancelable: true,
+      clientX: clickX,
+      clientY: clickY,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true,
+    };
+
+    const mouseBase = {
+      view: window,
+      bubbles: true,
+      cancelable: true,
+      clientX: clickX,
+      clientY: clickY,
+    };
+
+    target.dispatchEvent(new PointerEvent('pointermove', { ...pointerBase, buttons: 0 }));
+    target.dispatchEvent(new PointerEvent('pointerdown', { ...pointerBase, buttons: 1 }));
+    target.dispatchEvent(new MouseEvent('mousedown', { ...mouseBase, buttons: 1 }));
+    target.dispatchEvent(new PointerEvent('pointerup', { ...pointerBase, buttons: 0 }));
+    target.dispatchEvent(new MouseEvent('mouseup', { ...mouseBase, buttons: 0 }));
+    target.dispatchEvent(new PointerEvent('click', { ...pointerBase, buttons: 0 }));
+    target.dispatchEvent(new MouseEvent('click', mouseBase));
+  }
+
+  /**
+   * Seeks by clicking the progress bar at the ratio for the requested time.
+   * @param {number} time - Target position in seconds
+   * @param {number} duration - Mix duration in seconds
+   * @returns {{ success: boolean, action: string, time: number, method: string, error?: string } & Record<string, unknown>}
+   */
+  seekViaProgressBarClick(time, duration) {
+    const resolved = this.resolveProgressBarSeekClick(time, duration);
+    if (!resolved) {
+      this.log.warn('[CACP-Seek] soundcloud seek click — no clickable progress element found', {
+        time,
+        duration,
+      });
+      return { success: false, error: 'No clickable progress element' };
+    }
+
+    const { clickable, hitElement, clickX, clickY, percentage, rect } = resolved;
+    const rawHit = document.elementFromPoint(clickX, clickY);
+
+    this.dispatchSeekPointerClick(hitElement, clickX, clickY);
+
+    const diagnostics = {
+      percentage: Math.round(percentage * 1000) / 10,
+      clickX,
+      clickY,
+      rectLeft: rect.left,
+      rectTop: rect.top,
+      rectWidth: rect.width,
+      rectHeight: rect.height,
+      clickableClass: clickable.className,
+      hitElementClass: hitElement.className,
+      rawHitClass: rawHit?.className ?? null,
+      usedElementFromPoint: hitElement !== clickable,
+    };
+
+    this.log.info('[CACP-Seek] soundcloud seek click dispatched', diagnostics);
+    return { success: true, action: 'seek', time, method: 'pointer-click', ...diagnostics };
+  }
+
+  /**
+   * Reads the current playback position straight from the ARIA progressbar.
+   * @returns {number | null} Displayed position in seconds, or null if unavailable.
+   */
+  getDisplayedPosition() {
+    const bar = document.querySelector(
+      '.playbackTimeline__progressWrapper[role="progressbar"], .playbackTimeline [role="progressbar"], .playControls [role="progressbar"]',
+    );
+    if (!bar) {
+      return null;
+    }
+
+    const now = parseFloat(bar.getAttribute('aria-valuenow') || '');
+    return Number.isNaN(now) ? null : Math.round(now);
+  }
+
+  /**
+   * Dispatches a single arrow-key seek step on the document body.
+   * SoundCloud's global shortcut handler moves playback ~5s per press and,
+   * unlike a raw media element, accepts synthetic keyboard events.
+   * @param {'ArrowRight' | 'ArrowLeft'} key - Direction key to fire
+   */
+  dispatchArrowSeek(key) {
+    const keyCode = key === 'ArrowRight' ? 39 : 37;
+    const opts = { key, code: key, keyCode, which: keyCode, bubbles: true, cancelable: true };
+    document.body.dispatchEvent(new KeyboardEvent('keydown', opts));
+    document.body.dispatchEvent(new KeyboardEvent('keyup', opts));
+  }
+
+  /**
+   * Fine-tunes playback toward the target, reading the ARIA position between
+   * steps. Two phases:
+   *   1. Arrow-key steps (~5s each) with an overshoot guard — the loop stops
+   *      once a further press could only overshoot, so it never oscillates.
+   *   2. A single absolute progress-bar click, but only when the bar's pixel
+   *      resolution can actually resolve the requested tolerance (short/medium
+   *      tracks). On long DJ sets the pixel floor exceeds the tolerance, so this
+   *      is skipped and the arrow-floor result is returned with
+   *      reachedTolerance: false rather than thrashing.
+   * @param {number} time - Target position in seconds
+   * @param {number} duration - Track duration in seconds (for pixel-resolution math)
+   * @param {number} [toleranceSeconds] - Acceptable |error| to stop at
+   * @param {number} [maxPresses] - Total arrow-press budget
+   * @returns {Promise<{ finalPosition: number | null, error: number | null, presses: number, precisionClick: boolean, pixelSeconds: number | null, reachedTolerance: boolean, skipped?: boolean }>}
+   */
+  async fineTuneToTarget(time, duration, toleranceSeconds = 1, maxPresses = 12) {
+    const arrowStep = 5;
+    let actual = this.getDisplayedPosition();
+
+    if (actual == null) {
+      return {
+        finalPosition: null,
+        error: null,
+        presses: 0,
+        precisionClick: false,
+        pixelSeconds: null,
+        reachedTolerance: false,
+        skipped: true,
+      };
+    }
+
+    let presses = 0;
+    while (presses < maxPresses) {
+      const error = time - actual;
+      // A 5s step only helps while we're at least half a step away; closer than
+      // that it can only overshoot, so hand off to the precision phase.
+      if (Math.abs(error) <= toleranceSeconds || Math.abs(error) < arrowStep * 0.5) {
+        break;
+      }
+
+      const key = error > 0 ? 'ArrowRight' : 'ArrowLeft';
+      const burst = Math.min(
+        Math.max(1, Math.round(Math.abs(error) / arrowStep)),
+        maxPresses - presses,
+      );
+
+      const before = actual;
+      for (let i = 0; i < burst; i += 1) {
+        this.dispatchArrowSeek(key);
+        presses += 1;
+      }
+
+      await this.sleep(120);
+      actual = this.getDisplayedPosition();
+
+      if (actual == null || Math.abs(actual - before) < 1) {
+        break;
+      }
+    }
+
+    const wrapper = this.findProgressBarWrapper();
+    const barWidth = wrapper ? wrapper.getBoundingClientRect().width : 0;
+    const pixelSeconds = barWidth > 0 ? duration / barWidth : Infinity;
+
+    let precisionClick = false;
+    if (
+      actual != null &&
+      Math.abs(time - actual) > toleranceSeconds &&
+      pixelSeconds <= toleranceSeconds
+    ) {
+      this.seekViaProgressBarClick(time, duration);
+      precisionClick = true;
+      await this.sleep(120);
+      actual = this.getDisplayedPosition();
+    }
+
+    return {
+      finalPosition: actual,
+      error: actual == null ? null : time - actual,
+      presses,
+      precisionClick,
+      pixelSeconds: Number.isFinite(pixelSeconds) ? Math.round(pixelSeconds * 100) / 100 : null,
+      reachedTolerance: actual != null && Math.abs(time - actual) <= toleranceSeconds,
+    };
+  }
+
+  /**
    * Seek to specific time
    */
   async seek(time) {
@@ -747,62 +977,31 @@ export class SoundCloudHandler extends SiteHandler {
       });
     }
 
-    // Calculate progress bar position and synthesize pointer events on wrapper
+    // No queryable HTMLMediaElement on SoundCloud: coarse-click the progress bar,
+    // then fine-tune with arrow-key steps using ARIA position feedback.
     const duration = displayedDuration || this.getDuration();
     this.log.info('[CACP-Seek] soundcloud seek fallback to click', { time, duration, displayedDuration });
-    if (duration > 0) {
-      const percentage = time / duration;
-      // Prefer the role=progressbar wrapper
-      const wrapper = document.querySelector('.playbackTimeline__progressWrapper[role="progressbar"]')
-        || document.querySelector('.playbackTimeline [role="progressbar"]');
-      const progressBar = this.getElement(this.constructor.config.selectors.progressBar);
-
-      const clickable = wrapper || (progressBar ? progressBar.parentElement : null);
-      if (clickable) {
-        const rect = clickable.getBoundingClientRect();
-        const clickX = rect.left + Math.max(0, Math.min(rect.width, rect.width * percentage));
-        const clickY = rect.top + (rect.height / 2);
-
-        // Dispatch the full event sequence some sites expect
-        const fire = (type) => clickable.dispatchEvent(new MouseEvent(type, {
-          view: window,
-          bubbles: true,
-          cancelable: true,
-          clientX: clickX,
-          clientY: clickY
-        }));
-        fire('mousemove');
-        fire('mousedown');
-        fire('mouseup');
-        fire('click');
-
-        // Diagnostic detail forwarded all the way back to the server/popup —
-        // if rectWidth is ~0 every click lands at rect.left regardless of
-        // percentage, which would explain a seek that always lands near 0.
-        const diagnostics = {
-          percentage: Math.round(percentage * 100),
-          clickX,
-          clickY,
-          rectLeft: rect.left,
-          rectTop: rect.top,
-          rectWidth: rect.width,
-          rectHeight: rect.height,
-          usedWrapper: !!wrapper,
-          clickableClass: clickable.className
-        };
-        this.log.info('[CACP-Seek] soundcloud seek click dispatched', diagnostics);
-        this.scheduleSeekPostCheck(time, 'mouse-sequence');
-        return { success: true, action: 'seek', time, method: 'mouse-sequence', ...diagnostics };
-      }
-
-      this.log.warn('[CACP-Seek] soundcloud seek click — no clickable progress element found', {
-        hasWrapper: !!wrapper,
-        hasProgressBar: !!progressBar
-      });
+    if (duration <= 0) {
+      this.log.warn('[CACP-Seek] soundcloud seek failed — no method available', { time, duration });
+      return { success: false, error: 'No seek method available' };
     }
 
-    this.log.warn('[CACP-Seek] soundcloud seek failed — no method available', { time, duration });
-    return { success: false, error: 'No seek method available' };
+    const coarse = this.seekViaProgressBarClick(time, duration);
+    if (!coarse.success) {
+      this.scheduleSeekPostCheck(time, 'click-failed');
+      return coarse;
+    }
+
+    await this.sleep(150);
+    const tune = await this.fineTuneToTarget(time, duration, 1);
+    this.log.info('[CACP-Seek] soundcloud seek fine-tune complete', {
+      time,
+      coarseMethod: coarse.method,
+      ...tune,
+    });
+
+    this.scheduleSeekPostCheck(time, 'click+arrows');
+    return { success: true, action: 'seek', time, method: 'click+arrows', coarseMethod: coarse.method, ...tune };
   }
 
   /**

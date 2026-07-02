@@ -17,7 +17,7 @@ export function findCurrentTracklistTrack<T extends TracklistCueTrack>(
     return null;
   }
 
-  const progressSec = Math.floor(progressMs / 1000);
+  const progressSec = progressMs / 1000;
   let current: T | null = null;
 
   for (const track of tracks) {

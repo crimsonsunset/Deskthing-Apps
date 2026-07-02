@@ -26,6 +26,22 @@ let lastAutoLookupKey: string | null = null;
 let lastTracklistPayload: TracklistClientPayload | null = null;
 const lookupFlights = new Map<string, Promise<void>>();
 
+const PLACEHOLDER_MIX_ARTISTS = new Set(['unknown artist']);
+const PLACEHOLDER_MIX_TITLES = new Set(['unknown track', 'unknown title']);
+
+/**
+ * Returns true when extension metadata is still a placeholder, not a real mix identity.
+ * @param {string} artist - Raw artist from extension payload.
+ * @param {string} title - Raw title from extension payload.
+ * @returns {boolean} True when auto-lookup should not run yet.
+ */
+function isPlaceholderMixIdentity(artist: string, title: string): boolean {
+  return (
+    PLACEHOLDER_MIX_ARTISTS.has(artist.trim().toLowerCase()) ||
+    PLACEHOLDER_MIX_TITLES.has(title.trim().toLowerCase())
+  );
+}
+
 /**
  * Notifies MediaStore that tracklist cache/display fields may have changed.
  */
@@ -136,6 +152,14 @@ export function maybeAutoLookupTracklist(
     tracklistLogger.debug('Auto-lookup skipped — missing artist or title', {
       artist: artist ?? null,
       title: title ?? null,
+    });
+    return;
+  }
+
+  if (isPlaceholderMixIdentity(artist, title)) {
+    tracklistLogger.debug('Auto-lookup skipped — placeholder mix identity', {
+      artist,
+      title,
     });
     return;
   }

@@ -7,6 +7,7 @@ import { useCacpMusic } from './hooks/use-cacp-music.hook';
 import {
   findCurrentTracklistTrack,
   formatCueSeconds,
+  getTrackDurationSeconds,
   useCacpTracklist,
   type TracklistResultView,
   type TracklistState,
@@ -58,6 +59,7 @@ function TracklistPanel({
   result,
   error,
   progressMs,
+  mixDurationSeconds,
   onDevLookup,
   onLookupCurrent,
   onSeekToTrack,
@@ -68,6 +70,7 @@ function TracklistPanel({
   result: TracklistResultView | null;
   error: string | null;
   progressMs?: number | null;
+  mixDurationSeconds?: number | null;
   onDevLookup: () => void;
   onLookupCurrent?: () => void;
   onSeekToTrack?: (track: {
@@ -122,9 +125,14 @@ function TracklistPanel({
             </p>
           ) : null}
           <ol className="cacp-tracklist-rows">
-            {result.tracks.map((track) => {
+            {result.tracks.map((track, index) => {
               const isActive = currentTrack?.order === track.order;
               const canSeek = onSeekToTrack && track.cueSeconds != null;
+              const durationSeconds = getTrackDurationSeconds(
+                result.tracks,
+                index,
+                mixDurationSeconds,
+              );
 
               return (
                 <li
@@ -152,6 +160,9 @@ function TracklistPanel({
                     <span className="cacp-tracklist-track">
                       {track.artist ? `${track.artist} — ` : ''}
                       {track.title}
+                    </span>
+                    <span className="cacp-tracklist-duration">
+                      {durationSeconds != null ? formatCueSeconds(durationSeconds) : ''}
                     </span>
                   </button>
                 </li>
@@ -227,6 +238,9 @@ export default function App() {
       result={result}
       error={error}
       progressMs={song?.track_progress}
+      mixDurationSeconds={
+        song?.track_duration != null ? song.track_duration / 1000 : null
+      }
       onDevLookup={handleDevLookup}
       onLookupCurrent={song ? handleLookupCurrent : undefined}
       onSeekToTrack={song ? handleSeekToTrack : undefined}

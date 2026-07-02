@@ -339,6 +339,16 @@ body {
   white-space: nowrap;
 }
 
+.cacp-tracklist-duration {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  color: #71717a;
+}
+
+.cacp-tracklist-rows li.is-active .cacp-tracklist-duration {
+  color: #93c5fd;
+}
+
 @media (max-width: 720px) {
   .cacp-app,
   .cacp-app-empty-layout {
