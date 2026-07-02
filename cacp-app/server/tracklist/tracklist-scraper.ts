@@ -1,4 +1,5 @@
 import type { Browser } from 'puppeteer-core';
+import { tracklistLogger } from '../logger.helpers.js';
 import { dumpDebugSnapshot } from './tracklist-debug.util.js';
 import {
   SearchCandidateSchema,
@@ -98,8 +99,8 @@ async function logFailureDiagnostics(
     .then((el) => el !== null)
     .catch(() => false);
 
-  console.warn(
-    `🐞 [CACP-Tracklist] ${label} diagnostics — url=${url} title="${title}" ` +
+  tracklistLogger.warn(
+    `${label} diagnostics — url=${url} title="${title}" ` +
       `a[href*="tracklist"]=${looseTracklistAnchorCount} totalAnchors=${totalAnchorCount} ` +
       `${SEARCH_INPUT_SELECTOR}Present=${hasSearchInput}`,
   );
@@ -117,35 +118,35 @@ export async function searchTracklists(
   browser: Browser,
   query: string,
 ): Promise<SearchCandidate[]> {
-  console.log(`🔍 [CACP-Tracklist] searchTracklists start — query="${query}"`);
+  tracklistLogger.info(`searchTracklists start — query="${query}"`);
   const page = await browser.newPage();
 
   try {
-    console.log(`🌐 [CACP-Tracklist] Navigating to ${SEARCH_BASE_URL}`);
+    tracklistLogger.debug(`Navigating to ${SEARCH_BASE_URL}`);
     await page.goto(SEARCH_BASE_URL, {
       waitUntil: 'networkidle2',
       timeout: PAGE_LOAD_TIMEOUT_MS,
     });
-    console.log(`🌐 [CACP-Tracklist] Loaded — url=${page.url()} title="${await page.title()}"`);
+    tracklistLogger.debug(`Loaded — url=${page.url()} title="${await page.title()}"`);
 
     const inputHandle = await page.$(SEARCH_INPUT_SELECTOR);
     if (!inputHandle) {
-      console.warn(
-        `⌨️ [CACP-Tracklist] Search input ${SEARCH_INPUT_SELECTOR} not found on page — cookie/consent overlay likely blocking it`,
+      tracklistLogger.warn(
+        `Search input ${SEARCH_INPUT_SELECTOR} not found on page — cookie/consent overlay likely blocking it`,
       );
       await logFailureDiagnostics(page, 'search-input-missing');
       return [];
     }
 
-    console.log(`⌨️ [CACP-Tracklist] Clicking ${SEARCH_INPUT_SELECTOR}`);
+    tracklistLogger.debug(`Clicking ${SEARCH_INPUT_SELECTOR}`);
     await page.click(SEARCH_INPUT_SELECTOR);
-    console.log(`⌨️ [CACP-Tracklist] Typing query (CDP keyboard.type, delay=50ms)`);
+    tracklistLogger.debug('Typing query (CDP keyboard.type, delay=50ms)');
     await page.keyboard.type(query, { delay: 50 });
-    console.log(`⌨️ [CACP-Tracklist] Pressing Enter`);
+    tracklistLogger.debug('Pressing Enter');
     await page.keyboard.press('Enter');
 
-    console.log(
-      `⏳ [CACP-Tracklist] Waiting up to ${SEARCH_RESULTS_TIMEOUT_MS}ms for navigation to /search/result.php`,
+    tracklistLogger.debug(
+      `Waiting up to ${SEARCH_RESULTS_TIMEOUT_MS}ms for navigation to /search/result.php`,
     );
     try {
       await page.waitForFunction(
@@ -154,17 +155,17 @@ export async function searchTracklists(
       );
     } catch (waitErr: unknown) {
       const message = waitErr instanceof Error ? waitErr.message : String(waitErr);
-      console.warn(
-        `⏳ [CACP-Tracklist] Never navigated to /search/ (still on ${page.url()}) — search interaction likely didn't register: ${message}`,
+      tracklistLogger.warn(
+        `Never navigated to /search/ (still on ${page.url()}) — search interaction likely didn't register: ${message}`,
       );
       await logFailureDiagnostics(page, 'search-navigation-timeout');
       return [];
     }
 
-    console.log(`🌐 [CACP-Tracklist] Navigated to results — url=${page.url()} title="${await page.title()}"`);
+    tracklistLogger.debug(`Navigated to results — url=${page.url()} title="${await page.title()}"`);
 
-    console.log(
-      `⏳ [CACP-Tracklist] Waiting up to ${SEARCH_RESULTS_TIMEOUT_MS}ms for ${TRACKLIST_LINK_SELECTOR}`,
+    tracklistLogger.debug(
+      `Waiting up to ${SEARCH_RESULTS_TIMEOUT_MS}ms for ${TRACKLIST_LINK_SELECTOR}`,
     );
     try {
       await page.waitForSelector(TRACKLIST_LINK_SELECTOR, {
@@ -172,7 +173,7 @@ export async function searchTracklists(
       });
     } catch (waitErr: unknown) {
       const message = waitErr instanceof Error ? waitErr.message : String(waitErr);
-      console.warn(`⏳ [CACP-Tracklist] waitForSelector(${TRACKLIST_LINK_SELECTOR}) failed: ${message}`);
+      tracklistLogger.warn(`waitForSelector(${TRACKLIST_LINK_SELECTOR}) failed: ${message}`);
       await logFailureDiagnostics(page, 'search-selector-timeout');
       return [];
     }
@@ -211,15 +212,15 @@ export async function searchTracklists(
       );
     } catch (evalErr: unknown) {
       const message = evalErr instanceof Error ? evalErr.message : String(evalErr);
-      console.warn(
-        `🔍 [CACP-Tracklist] $$eval(${TRACKLIST_LINK_SELECTOR}) failed (likely a DOM race — page re-rendered mid-query): ${message}`,
+      tracklistLogger.warn(
+        `$$eval(${TRACKLIST_LINK_SELECTOR}) failed (likely a DOM race — page re-rendered mid-query): ${message}`,
       );
       await logFailureDiagnostics(page, 'search-eval-dom-race');
       return [];
     }
 
-    console.log(
-      `🔍 [CACP-Tracklist] Found ${rawCandidates.length} raw candidates (capping at ${MAX_SEARCH_CANDIDATES})`,
+    tracklistLogger.info(
+      `Found ${rawCandidates.length} raw candidates (capping at ${MAX_SEARCH_CANDIDATES})`,
     );
 
     const candidates = rawCandidates
@@ -227,13 +228,13 @@ export async function searchTracklists(
       .map((candidate) => SearchCandidateSchema.parse(candidate));
 
     candidates.forEach((candidate, index) => {
-      console.log(`🔍 [CACP-Tracklist]   [${index + 1}] "${candidate.title}" → ${candidate.url}`);
+      tracklistLogger.debug(`  [${index + 1}] "${candidate.title}" → ${candidate.url}`);
     });
 
     return candidates;
   } finally {
     await page.close();
-    console.log('🔍 [CACP-Tracklist] searchTracklists page closed');
+    tracklistLogger.debug('searchTracklists page closed');
   }
 }
 
@@ -247,19 +248,19 @@ export async function scrapeTracklist(
   browser: Browser,
   url: string,
 ): Promise<TracklistResult> {
-  console.log(`📄 [CACP-Tracklist] scrapeTracklist start — url=${url}`);
+  tracklistLogger.info(`scrapeTracklist start — url=${url}`);
   const page = await browser.newPage();
 
   try {
-    console.log(`🌐 [CACP-Tracklist] Navigating to ${url}`);
+    tracklistLogger.debug(`Navigating to ${url}`);
     await page.goto(url, {
       waitUntil: 'networkidle2',
       timeout: PAGE_LOAD_TIMEOUT_MS,
     });
-    console.log(`🌐 [CACP-Tracklist] Loaded — url=${page.url()} title="${await page.title()}"`);
+    tracklistLogger.debug(`Loaded — url=${page.url()} title="${await page.title()}"`);
 
-    console.log(
-      `⏳ [CACP-Tracklist] Waiting up to ${SEARCH_RESULTS_TIMEOUT_MS}ms for ${TRACK_ROW_SELECTOR}`,
+    tracklistLogger.debug(
+      `Waiting up to ${SEARCH_RESULTS_TIMEOUT_MS}ms for ${TRACK_ROW_SELECTOR}`,
     );
     try {
       await page.waitForSelector(TRACK_ROW_SELECTOR, {
@@ -267,7 +268,7 @@ export async function scrapeTracklist(
       });
     } catch (waitErr: unknown) {
       const message = waitErr instanceof Error ? waitErr.message : String(waitErr);
-      console.warn(`⏳ [CACP-Tracklist] waitForSelector(${TRACK_ROW_SELECTOR}) failed: ${message}`);
+      tracklistLogger.warn(`waitForSelector(${TRACK_ROW_SELECTOR}) failed: ${message}`);
       await logFailureDiagnostics(page, 'scrape-selector-timeout');
       throw waitErr;
     }
@@ -277,8 +278,8 @@ export async function scrapeTracklist(
       return parseTracklistDom(document);
     }, parseTracklistDom.toString());
 
-    console.log(
-      `📄 [CACP-Tracklist] Scraped "${scraped.mixTitle}" — ${scraped.tracks.length} track rows`,
+    tracklistLogger.info(
+      `Scraped "${scraped.mixTitle}" — ${scraped.tracks.length} track rows`,
     );
 
     return TracklistResultSchema.parse({
@@ -288,6 +289,6 @@ export async function scrapeTracklist(
     });
   } finally {
     await page.close();
-    console.log('📄 [CACP-Tracklist] scrapeTracklist page closed');
+    tracklistLogger.debug('scrapeTracklist page closed');
   }
 }

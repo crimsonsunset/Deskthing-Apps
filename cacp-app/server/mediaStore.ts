@@ -3,6 +3,7 @@ import type { SongData } from "@deskthing/types";
 import type { WebSocket } from 'ws';
 import { saveRemoteImage } from "./imageUtils";
 import { sendDeskThingError, sendDeskThingWarning } from "./deskthing-log.helpers.js";
+import { mediastoreLogger } from "./logger.helpers.js";
 import { maybeAutoLookupTracklist } from "./tracklist/tracklist.handlers.js";
 import { planExtensionSongSync } from "./tracklist/tracklist-song-enrichment.helpers.js";
 import {
@@ -19,7 +20,7 @@ export class CACPMediaStore {
   private lastSentPayload: SongData | null = null;
 
   private constructor() {
-    console.log('🎯 [CACP-MediaStore] Initializing enhanced MediaStore with SoundCloud app features');
+    mediastoreLogger.info('Initializing enhanced MediaStore with SoundCloud app features');
   }
 
   /** Returns the singleton MediaStore instance. */
@@ -32,11 +33,11 @@ export class CACPMediaStore {
 
   /** Stores the extension WebSocket for outbound commands and popup sync. */
   public setExtensionWebSocket(ws: WebSocket) {
-    console.log('🔗 [CACP-MediaStore] Setting extension WebSocket connection for control commands');
+    mediastoreLogger.info('Setting extension WebSocket connection for control commands');
     this.extensionWebSocket = ws;
 
     ws.on('close', () => {
-      console.log('🔌 [CACP-MediaStore] Extension WebSocket connection closed');
+      mediastoreLogger.info('Extension WebSocket connection closed');
       this.extensionWebSocket = null;
     });
 
@@ -49,10 +50,10 @@ export class CACPMediaStore {
   private sendCommandToExtension(
     action: string,
     payload: Record<string, unknown> = {},
-    logLine?: string,
+    logMessage?: string,
   ) {
-    if (logLine) {
-      console.log(logLine);
+    if (logMessage) {
+      mediastoreLogger.debug(logMessage);
     }
     if (!this.extensionWebSocket) {
       sendDeskThingWarning(`⚠️ [CACP-MediaStore] No extension WebSocket connection available for command: ${action}`);
@@ -68,14 +69,14 @@ export class CACPMediaStore {
     };
 
     if (action === 'seek') {
-      console.log(`[CACP-Seek] mediaStore WS outbound action=seek time=${payload.time} hasSocket=${!!this.extensionWebSocket}`);
+      mediastoreLogger.debug(`WS outbound action=seek time=${payload.time} hasSocket=${!!this.extensionWebSocket}`);
     }
-    console.log(`🎮 [CACP-MediaStore] Sending command to extension: ${action}`);
-    console.log(`📋 [CACP-MediaStore] Command payload:`, JSON.stringify(command, null, 2));
+    mediastoreLogger.debug(`Sending command to extension: ${action}`);
+    mediastoreLogger.debug('Command payload', command);
 
     try {
       this.extensionWebSocket.send(JSON.stringify(command));
-      console.log(`✅ [CACP-MediaStore] Command sent successfully: ${action}`);
+      mediastoreLogger.debug(`Command sent successfully: ${action}`);
       return true;
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -87,12 +88,12 @@ export class CACPMediaStore {
   /** Downloads and caches remote artwork locally. */
   private async processArtwork(artworkUrl: string, title?: string, artist?: string): Promise<string | undefined> {
     if (!artworkUrl) {
-      console.log('🖼️ [CACP-MediaStore] No artwork URL provided');
+      mediastoreLogger.debug('No artwork URL provided');
       return undefined;
     }
 
     try {
-      console.log(`🖼️ [CACP-MediaStore] Processing artwork: ${artworkUrl}`);
+      mediastoreLogger.debug(`Processing artwork: ${artworkUrl}`);
 
       const safeFileName = `${title || 'unknown'}-${artist || 'unknown'}`
         .replace(/[<>:"/\\|?*]/g, '_')
@@ -101,7 +102,7 @@ export class CACPMediaStore {
       const processedPath = await saveRemoteImage(artworkUrl, safeFileName);
 
       if (processedPath) {
-        console.log(`✅ [CACP-MediaStore] Artwork processed successfully: ${processedPath}`);
+        mediastoreLogger.debug(`Artwork processed successfully: ${processedPath}`);
         return processedPath;
       }
 
@@ -129,19 +130,21 @@ export class CACPMediaStore {
     try {
       const plan = planExtensionSongSync(this.extensionData, this.lastSentPayload);
       if (!plan) {
-        console.log('📋 [CACP-MediaStore] No meaningful data to send (missing title and artist)');
+        mediastoreLogger.debug('No meaningful data to send (missing title and artist)');
         return;
       }
 
       if (plan.isDuplicate) {
-        console.log('📋 [CACP-MediaStore] Skipping duplicate payload');
+        mediastoreLogger.debug('Skipping duplicate payload');
         return;
       }
 
       const { musicPayload, enriched, rawTitle, rawArtist } = plan;
-      console.log(`📤 [CACP-MediaStore] Sending to DeskThing: "${musicPayload.track_name}" by "${musicPayload.artist}" (${musicPayload.is_playing ? 'PLAYING' : 'PAUSED'})`);
+      mediastoreLogger.info(
+        `Sending to DeskThing: "${musicPayload.track_name}" by "${musicPayload.artist}" (${musicPayload.is_playing ? 'PLAYING' : 'PAUSED'})`,
+      );
       if (musicPayload.thumbnail) {
-        console.log(`🖼️ [CACP-MediaStore] Including artwork: ${musicPayload.thumbnail}`);
+        mediastoreLogger.debug(`Including artwork: ${musicPayload.thumbnail}`);
       }
 
       DeskThing.sendSong(musicPayload);
@@ -163,28 +166,28 @@ export class CACPMediaStore {
 
   /** Requests next track from the extension. */
   public handleNext() {
-    this.sendCommandToExtension('nexttrack', {}, '⏭️ [CACP-MediaStore] Next track requested');
+    this.sendCommandToExtension('nexttrack', {}, 'Next track requested');
   }
 
   /** Requests previous track from the extension. */
   public handlePrevious() {
-    this.sendCommandToExtension('previoustrack', {}, '⏮️ [CACP-MediaStore] Previous track requested');
+    this.sendCommandToExtension('previoustrack', {}, 'Previous track requested');
   }
 
   /** Requests play from the extension. */
   public handlePlay() {
-    this.sendCommandToExtension('play', {}, '▶️ [CACP-MediaStore] Play requested');
+    this.sendCommandToExtension('play', {}, 'Play requested');
   }
 
   /** Requests pause from the extension. */
   public handlePause() {
-    this.sendCommandToExtension('pause', {}, '⏸️ [CACP-MediaStore] Pause requested');
+    this.sendCommandToExtension('pause', {}, 'Pause requested');
   }
 
   /** Seeks playback to the given position via the extension. */
   public handleSeek(data: { positionMs: number }) {
     if (data.positionMs == null || Number.isNaN(data.positionMs)) {
-      console.warn(`[CACP-Seek] mediaStore handleSeek rejected — invalid positionMs: ${data.positionMs}`);
+      mediastoreLogger.warn(`handleSeek rejected — invalid positionMs: ${data.positionMs}`);
       return;
     }
 
@@ -192,7 +195,7 @@ export class CACPMediaStore {
     const cachedPosition = this.extensionData.position ?? 0;
     const cachedDuration = this.extensionData.duration ?? 0;
 
-    console.log('[CACP-Seek] mediaStore handleSeek', {
+    mediastoreLogger.debug('handleSeek', {
       positionMs: data.positionMs,
       timeSeconds: seconds,
       cachedPositionSeconds: cachedPosition,
@@ -205,17 +208,17 @@ export class CACPMediaStore {
 
     if (cachedDuration) {
       const percentage = (seconds / cachedDuration) * 100;
-      console.log(`[CACP-Seek] mediaStore seek target ${percentage.toFixed(1)}% of known duration ${cachedDuration}s`);
+      mediastoreLogger.debug(`Seek target ${percentage.toFixed(1)}% of known duration ${cachedDuration}s`);
     } else {
-      console.log('[CACP-Seek] mediaStore seek — no extension duration cached yet');
+      mediastoreLogger.debug('Seek — no extension duration cached yet');
     }
 
     const sent = this.sendCommandToExtension(
       'seek',
       { time: seconds },
-      `[CACP-Seek] mediaStore WS seek command time=${seconds}s`,
+      `WS seek command time=${seconds}s`,
     );
-    console.log(`[CACP-Seek] mediaStore WS seek command sent=${sent}`);
+    mediastoreLogger.debug(`WS seek command sent=${sent}`);
   }
 
   /** Volume control is not supported for browser audio. */
@@ -228,7 +231,7 @@ export class CACPMediaStore {
     this.sendCommandToExtension(
       'shuffle',
       { shuffle: data.shuffle },
-      `🔀 [CACP-MediaStore] Shuffle ${data.shuffle ? 'ON' : 'OFF'} requested`,
+      `Shuffle ${data.shuffle ? 'ON' : 'OFF'} requested`,
     );
   }
 
@@ -239,26 +242,26 @@ export class CACPMediaStore {
 
   /** Re-sends current song state to DeskThing. */
   public handleGetSong() {
-    console.log('📡 [CACP-MediaStore] GET song request - sending current data');
+    mediastoreLogger.info('GET song request - sending current data');
     this.sendExtensionDataToDeskThing();
   }
 
   /** Re-sends current song state to DeskThing. */
   public handleRefresh() {
-    console.log('🔄 [CACP-MediaStore] REFRESH request - sending current data');
+    mediastoreLogger.info('REFRESH request - sending current data');
     this.sendExtensionDataToDeskThing();
   }
 
   /** Re-sends song state after tracklist lookup completes (clears dedupe cache). */
   public handleTracklistReady() {
-    console.log('🎧 [CACP-MediaStore] Tracklist ready — forcing display refresh');
+    mediastoreLogger.info('Tracklist ready — forcing display refresh');
     this.lastSentPayload = null;
     this.sendExtensionDataToDeskThing();
   }
 
   /** Clears connection and cached extension state. */
   public stop() {
-    console.log('🛑 [CACP-MediaStore] Stopping MediaStore');
+    mediastoreLogger.info('Stopping MediaStore');
     this.extensionWebSocket = null;
     this.extensionData = {};
     this.lastSentPayload = null;
@@ -266,7 +269,7 @@ export class CACPMediaStore {
 
   /** Purges all MediaStore data and stops the store. */
   public purge() {
-    console.log('🧹 [CACP-MediaStore] Purging MediaStore data');
+    mediastoreLogger.info('Purging MediaStore data');
     this.stop();
   }
 

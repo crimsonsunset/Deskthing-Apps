@@ -1,5 +1,6 @@
 import type { WebSocket } from 'ws';
 import { sendDeskThingError, sendDeskThingWarning } from './deskthing-log.helpers.js';
+import { mediastoreLogger } from './logger.helpers.js';
 
 /**
  * Chrome extension media payload nested under a WS message.
@@ -105,7 +106,7 @@ export function sendDisplayMetadataToExtension(
  */
 export function sendPongToExtension(ws: WebSocket | null, pingTimestamp?: number): void {
   if (!ws) {
-    console.log('📋 [CACP-MediaStore] Ping received but no extension WebSocket to reply on');
+    mediastoreLogger.debug('Ping received but no extension WebSocket to reply on');
     return;
   }
 
@@ -118,7 +119,7 @@ export function sendPongToExtension(ws: WebSocket | null, pingTimestamp?: number
     ws.send(JSON.stringify(payload));
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    console.log(`📋 [CACP-MediaStore] Failed to send pong: ${message}`);
+    mediastoreLogger.warn(`Failed to send pong: ${message}`);
   }
 }
 
@@ -133,18 +134,18 @@ export async function handleExtensionWsMessage(
 ): Promise<void> {
   try {
     const messageType = message.type || 'unknown';
-    console.log(`📨 [CACP-MediaStore] Processing extension message: ${messageType}`);
+    mediastoreLogger.debug(`Processing extension message: ${messageType}`);
 
     switch (message.type) {
       case 'connection':
-        console.log(
-          `🔗 [CACP-MediaStore] Extension connected: ${message.source} v${message.version} site=${message.site}`,
+        mediastoreLogger.info(
+          `Extension connected: ${message.source} v${message.version} site=${message.site}`,
         );
         break;
 
       case 'mediaData':
         if (message.data) {
-          console.log(`🎵 [CACP-MediaStore] Received media data from ${message.site || 'unknown site'}`);
+          mediastoreLogger.debug(`Received media data from ${message.site || 'unknown site'}`);
 
           const hasChanges =
             message.data.title !== ctx.extensionData.title ||
@@ -154,27 +155,27 @@ export async function handleExtensionWsMessage(
             message.data.isPlaying !== ctx.extensionData.isPlaying;
 
           if (hasChanges) {
-            console.log('🔄 [CACP-MediaStore] Media data changed, updating cache');
+            mediastoreLogger.debug('Media data changed, updating cache');
 
             if (message.data.title !== undefined) {
               ctx.extensionData.title = message.data.title;
-              console.log(`🎵 [CACP-MediaStore] Title: "${message.data.title}"`);
+              mediastoreLogger.debug(`Title: "${message.data.title}"`);
             }
             if (message.data.artist !== undefined) {
               ctx.extensionData.artist = message.data.artist;
-              console.log(`👤 [CACP-MediaStore] Artist: "${message.data.artist}"`);
+              mediastoreLogger.debug(`Artist: "${message.data.artist}"`);
             }
             if (message.data.album !== undefined) {
               ctx.extensionData.album = message.data.album;
-              console.log(`💿 [CACP-MediaStore] Album: "${message.data.album}"`);
+              mediastoreLogger.debug(`Album: "${message.data.album}"`);
             }
             if (message.data.isPlaying !== undefined) {
               ctx.extensionData.isPlaying = message.data.isPlaying;
-              console.log(`▶️ [CACP-MediaStore] Playing: ${message.data.isPlaying}`);
+              mediastoreLogger.debug(`Playing: ${message.data.isPlaying}`);
             }
 
             if (message.data.artwork && message.data.artwork !== ctx.extensionData.artwork) {
-              console.log(`🖼️ [CACP-MediaStore] New artwork detected: ${message.data.artwork}`);
+              mediastoreLogger.debug(`New artwork detected: ${message.data.artwork}`);
               ctx.extensionData.artwork = message.data.artwork;
 
               ctx
@@ -186,7 +187,7 @@ export async function handleExtensionWsMessage(
                 .then((processedPath) => {
                   if (processedPath) {
                     ctx.extensionData.processedArtwork = processedPath;
-                    console.log(`✅ [CACP-MediaStore] Artwork cached: ${processedPath}`);
+                    mediastoreLogger.debug(`Artwork cached: ${processedPath}`);
                     ctx.onRefreshDeskThing();
                   }
                 })
@@ -203,7 +204,7 @@ export async function handleExtensionWsMessage(
 
             ctx.onRefreshDeskThing();
           } else {
-            console.log('📋 [CACP-MediaStore] No media data changes detected, skipping update');
+            mediastoreLogger.debug('No media data changes detected, skipping update');
           }
         }
         break;
@@ -236,8 +237,8 @@ export async function handleExtensionWsMessage(
             const pos = ctx.extensionData.position || 0;
             const dur = ctx.extensionData.duration || 0;
             const percent = dur > 0 ? Math.round((pos / dur) * 100) : 0;
-            console.log(
-              `⏱️ [CACP-MediaStore] Progress: ${Math.round(pos)}s/${Math.round(dur)}s (${percent}%) playing=${ctx.extensionData.isPlaying}`,
+            mediastoreLogger.debug(
+              `Progress: ${Math.round(pos)}s/${Math.round(dur)}s (${percent}%) playing=${ctx.extensionData.isPlaying}`,
             );
           }
 
@@ -249,9 +250,9 @@ export async function handleExtensionWsMessage(
       case 'command-result': {
         const action = message.action || 'unknown';
         const success = message.success ? 'SUCCESS' : 'FAILED';
-        console.log(`🎮 [CACP-MediaStore] Command result for ${action}: ${success}`);
+        mediastoreLogger.debug(`Command result for ${action}: ${success}`);
         if (action === 'seek') {
-          console.log('[CACP-Seek] mediaStore command-result', {
+          mediastoreLogger.debug('command-result', {
             requestedTimeSeconds: message.time,
             success: message.success,
             detail: message.detail ?? null,
@@ -273,11 +274,11 @@ export async function handleExtensionWsMessage(
         break;
 
       default:
-        console.log(`📋 [CACP-MediaStore] Unknown extension message type: ${messageType}`);
+        mediastoreLogger.warn(`Unknown extension message type: ${messageType}`);
     }
   } catch (error: unknown) {
     const errMessage = error instanceof Error ? error.message : String(error);
     sendDeskThingError(`❌ [CACP-MediaStore] Error processing extension message: ${errMessage}`);
-    console.error('Full error:', error);
+    mediastoreLogger.error('Error processing extension message', error);
   }
 }

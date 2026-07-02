@@ -4,6 +4,7 @@ import {
   type SearchCandidate,
 } from './tracklist.types.js';
 import { getOpenRouterApiKey } from '../initSettings.js';
+import { tracklistLogger } from '../logger.helpers.js';
 
 const OPENROUTER_CHAT_COMPLETIONS_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const MATCHER_MODEL = 'anthropic/claude-haiku-4.5';
@@ -105,12 +106,12 @@ async function requestMatchFromOpenRouter(
     throw new Error('OpenRouter response did not include message content');
   }
 
-  console.log(`🧩 [CACP-Tracklist] OpenRouter raw response: ${content.slice(0, 500)}`);
+  tracklistLogger.debug(`OpenRouter raw response: ${content.slice(0, 500)}`);
 
   const parsedJson = JSON.parse(stripMarkdownFences(content)) as unknown;
   const match = MatchResponseSchema.parse(parsedJson);
-  console.log(
-    `🧩 [CACP-Tracklist] Matcher result — matchedUrl=${match.matchedUrl ?? 'null'} confidence=${match.confidence} reasoning="${match.reasoning}"`,
+  tracklistLogger.info(
+    `Matcher result — matchedUrl=${match.matchedUrl ?? 'null'} confidence=${match.confidence} reasoning="${match.reasoning}"`,
   );
   return match;
 }
@@ -125,12 +126,12 @@ export async function matchBestCandidate(
   query: string,
   candidates: SearchCandidate[],
 ): Promise<MatchResponse> {
-  console.log(
-    `🧩 [CACP-Tracklist] matchBestCandidate start — query="${query}" candidates=${candidates.length}`,
+  tracklistLogger.info(
+    `matchBestCandidate start — query="${query}" candidates=${candidates.length}`,
   );
 
   if (candidates.length === 0) {
-    console.warn('🧩 [CACP-Tracklist] No candidates provided — skipping OpenRouter call');
+    tracklistLogger.warn('No candidates provided — skipping OpenRouter call');
     return MatchResponseSchema.parse({
       matchedUrl: null,
       confidence: 'low',
@@ -143,7 +144,7 @@ export async function matchBestCandidate(
     throw new Error('OPENROUTER_API_KEY is not configured in DeskThing settings');
   }
 
-  console.log(`🧩 [CACP-Tracklist] Calling OpenRouter (${MATCHER_MODEL})`);
+  tracklistLogger.debug(`Calling OpenRouter (${MATCHER_MODEL})`);
   const prompt = buildMatchPrompt(query, candidates);
   return requestMatchFromOpenRouter(apiKey, prompt);
 }

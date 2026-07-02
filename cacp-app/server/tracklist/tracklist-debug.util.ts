@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Page } from 'puppeteer-core';
+import { tracklistLogger } from '../logger.helpers.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEBUG_DIR = join(__dirname, '../../tracklist-debug');
@@ -23,9 +24,9 @@ export async function dumpDebugSnapshot(page: Page, label: string): Promise<void
     writeFileSync(join(DEBUG_DIR, `${baseName}.html`), html, 'utf8');
     await page.screenshot({ path: join(DEBUG_DIR, `${baseName}.png`) as `${string}.png`, fullPage: true });
 
-    console.log(`🐞 [CACP-Tracklist] Debug snapshot saved: tracklist-debug/${baseName}.{html,png}`);
+    tracklistLogger.debug(`Debug snapshot saved: tracklist-debug/${baseName}.{html,png}`);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    console.warn(`🐞 [CACP-Tracklist] Failed to capture debug snapshot for "${label}": ${message}`);
+    tracklistLogger.warn(`Failed to capture debug snapshot for "${label}": ${message}`);
   }
 }

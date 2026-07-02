@@ -4,6 +4,7 @@ import {
   lookupTracklist,
 } from './tracklist-lookup.js';
 import type { TracklistResult } from './tracklist.types.js';
+import { tracklistLogger } from '../logger.helpers.js';
 
 export const TRACKLIST_EVENT = 'tracklist';
 
@@ -22,8 +23,8 @@ let lookupInFlightKey: string | null = null;
  * @param {TracklistClientPayload} payload - Current lookup status and result.
  */
 export function sendTracklistToClient(payload: TracklistClientPayload): void {
-  console.log(
-    `📤 [CACP-Tracklist] Sending to client — status=${payload.status} mixKey=${payload.mixKey ?? 'n/a'} tracks=${payload.result?.tracks.length ?? 0}${payload.error ? ` error="${payload.error}"` : ''}`,
+  tracklistLogger.debug(
+    `Sending to client — status=${payload.status} mixKey=${payload.mixKey ?? 'n/a'} tracks=${payload.result?.tracks.length ?? 0}${payload.error ? ` error="${payload.error}"` : ''}`,
   );
   DeskThing.send({
     type: TRACKLIST_EVENT,
@@ -44,10 +45,10 @@ export async function runTracklistLookup(
   force = false,
 ): Promise<void> {
   const mixKey = buildTracklistCacheKey(artist, title);
-  console.log(`▶️ [CACP-Tracklist] runTracklistLookup — artist="${artist}" title="${title}" force=${force}`);
+  tracklistLogger.info(`runTracklistLookup — artist="${artist}" title="${title}" force=${force}`);
 
   if (!force && lookupInFlightKey === mixKey) {
-    console.log(`▶️ [CACP-Tracklist] Lookup already in flight for ${mixKey} — skipping duplicate`);
+    tracklistLogger.debug(`Lookup already in flight for ${mixKey} — skipping duplicate`);
     return;
   }
 
@@ -88,7 +89,7 @@ export function maybeAutoLookupTracklist(
     return;
   }
 
-  console.log(`🔁 [CACP-Tracklist] Mix changed — auto-lookup triggered for ${mixKey}`);
+  tracklistLogger.info(`Mix changed — auto-lookup triggered for ${mixKey}`);
   lastAutoLookupKey = mixKey;
   void runTracklistLookup(artist, title);
 }

@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import puppeteer, { type Browser } from 'puppeteer-core';
+import { tracklistLogger } from '../logger.helpers.js';
 
 const DEFAULT_MAC_CHROME_PATH = join(
   homedir(),
@@ -25,7 +26,7 @@ export async function connectToChrome(
     );
   }
 
-  console.log(`🔌 [CACP-Tracklist] Reading DevToolsActivePort from ${devToolsActivePortPath}`);
+  tracklistLogger.debug(`Reading DevToolsActivePort from ${devToolsActivePortPath}`);
   const raw = await readFile(devToolsActivePortPath, 'utf8');
   const [port, wsPath] = raw
     .split('\n')
@@ -39,8 +40,8 @@ export async function connectToChrome(
   }
 
   const browserWSEndpoint = `ws://127.0.0.1:${port}${wsPath}`;
-  console.log(`🔌 [CACP-Tracklist] Connecting to ${browserWSEndpoint}`);
+  tracklistLogger.debug(`Connecting to ${browserWSEndpoint}`);
   const browser = await puppeteer.connect({ browserWSEndpoint });
-  console.log(`🔌 [CACP-Tracklist] Connected — browser version: ${await browser.version()}`);
+  tracklistLogger.info(`Connected — browser version: ${await browser.version()}`);
   return browser;
 }

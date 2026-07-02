@@ -1,4 +1,5 @@
 import { lookupTracklist } from './tracklist-lookup.js';
+import { tracklistLogger } from '../logger.helpers.js';
 
 /**
  * One-off manual validation: full lookup pipeline for Nora En Pure Purified #512.
@@ -11,6 +12,6 @@ async function main(): Promise<void> {
 
 main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(message);
+  tracklistLogger.error(message);
   process.exitCode = 1;
 });

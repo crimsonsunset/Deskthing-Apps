@@ -1,0 +1,81 @@
+{
+  "projectName": "CACP App Server",
+  "globalLevel": "info",
+  "timestampMode": "readable",
+  "format": {
+    "style": "brackets",
+    "componentCase": "upper",
+    "timestamp": "HH:mm:ss.SSS"
+  },
+  "display": {
+    "timestamp": true,
+    "emoji": true,
+    "component": true,
+    "level": false,
+    "message": true,
+    "jsonPayload": false,
+    "stackTrace": true
+  },
+  "components": {
+    "cacp": {
+      "emoji": "🎯",
+      "color": "#4A90E2",
+      "name": "CACP-Core",
+      "level": "debug"
+    },
+    "mediastore": {
+      "emoji": "🎯",
+      "color": "#4A90E2",
+      "name": "MediaStore",
+      "level": "debug"
+    },
+    "tracklist": {
+      "emoji": "🎧",
+      "color": "#9B59B6",
+      "name": "Tracklist",
+      "level": "debug"
+    },
+    "soundcloud": {
+      "emoji": "🎵",
+      "color": "#FF5500",
+      "name": "SoundCloud",
+      "level": "debug"
+    },
+    "youtube": {
+      "emoji": "📹",
+      "color": "#FF0000",
+      "name": "YouTube",
+      "level": "debug"
+    },
+    "site-detector": {
+      "emoji": "🔍",
+      "color": "#00C896",
+      "name": "SiteDetector",
+      "level": "debug"
+    },
+    "popup": {
+      "emoji": "🎛️",
+      "color": "#FF6B6B",
+      "name": "Popup",
+      "level": "info"
+    },
+    "background": {
+      "emoji": "🔧",
+      "color": "#4ECDC4",
+      "name": "Background",
+      "level": "debug"
+    },
+    "settings": {
+      "emoji": "⚙️",
+      "color": "#96CEB4",
+      "name": "Settings",
+      "level": "warn"
+    },
+    "test": {
+      "emoji": "🧪",
+      "color": "#FFEAA7",
+      "name": "Test",
+      "level": "error"
+    }
+  }
+}
