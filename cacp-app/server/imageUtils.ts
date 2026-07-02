@@ -17,6 +17,29 @@ const IMAGES_DIRS = [
   join(__dirname, '../images'),
 ];
 
+const writeLocks = new Map<string, Promise<void>>();
+
+/**
+ * Serializes concurrent writes to the same local image filename.
+ * @param {string} lockKey - Stable key (typically the filename without extension).
+ * @param {() => Promise<T>} fn - Critical section to run under the lock.
+ * @returns {Promise<T>} Result of fn.
+ */
+async function withCacheLock<T>(lockKey: string, fn: () => Promise<T>): Promise<T> {
+  const prior = writeLocks.get(lockKey) ?? Promise.resolve();
+  let release!: () => void;
+  const next = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  writeLocks.set(lockKey, prior.then(() => next));
+  await prior;
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
+
 function ensureImagesDirs() {
   for (const dir of IMAGES_DIRS) {
     if (!existsSync(dir)) {
@@ -39,17 +62,19 @@ function writeFileAsync(filePath: string, binary: Buffer): Promise<void> {
 }
 
 export async function saveBinaryImage(binary: Buffer, fileNameNoExt: string, ext = 'png'): Promise<string> {
-  ensureImagesDirs();
-  try {
-    await Promise.all(
-      IMAGES_DIRS.map((dir) => writeFileAsync(join(dir, `${fileNameNoExt}.${ext}`), binary)),
-    );
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    sendDeskThingError(`Failed to save image: ${message}`);
-    throw err;
-  }
-  return `${PUBLIC_BASE}${fileNameNoExt}.${ext}`;
+  return withCacheLock(`${fileNameNoExt}.${ext}`, async () => {
+    ensureImagesDirs();
+    try {
+      await Promise.all(
+        IMAGES_DIRS.map((dir) => writeFileAsync(join(dir, `${fileNameNoExt}.${ext}`), binary)),
+      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      sendDeskThingError(`Failed to save image: ${message}`);
+      throw err;
+    }
+    return `${PUBLIC_BASE}${fileNameNoExt}.${ext}`;
+  });
 }
 
 export async function saveRemoteImage(url: string, fileNameHint: string): Promise<string | undefined> {

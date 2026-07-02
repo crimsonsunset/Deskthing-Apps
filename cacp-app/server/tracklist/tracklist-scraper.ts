@@ -14,6 +14,66 @@ const TRACKLIST_LINK_SELECTOR = 'a[href*="/tracklist/"]';
 const TRACK_ROW_SELECTOR = 'div[id^="tlp_"]';
 const SEARCH_RESULTS_TIMEOUT_MS = 15_000;
 const PAGE_LOAD_TIMEOUT_MS = 30_000;
+const PLACEHOLDER_ART_PATTERN = /default_100\.png|empty\.png|\/artworks\/default/i;
+
+type ParsedTracklistDom = {
+  mixTitle: string;
+  tracks: {
+    order: number;
+    cueSeconds: number | null;
+    artist: string;
+    title: string;
+    artworkUrl?: string;
+  }[];
+};
+
+/**
+ * Parses a 1001tracklists tracklist page DOM into mix title and timestamped track rows.
+ * Pure function for fixture tests (linkedom) and browser evaluate (via toString).
+ * @param {Document} document - Tracklist page document.
+ * @returns {ParsedTracklistDom} Mix title and parsed track rows.
+ */
+export function parseTracklistDom(document: Document): ParsedTracklistDom {
+  const mixTitle =
+    document.querySelector('h1')?.textContent?.replace(/\s+/g, ' ').trim() ??
+    document.title.replace(/\s*\|\s*1001Tracklists.*$/i, '').trim();
+
+  const rows = Array.from(document.querySelectorAll('div[id^="tlp_"]')).filter(
+    (row) =>
+      row.querySelector('meta[itemprop="name"]') ?? row.querySelector('meta[itemprop="byArtist"]'),
+  );
+
+  const tracks = rows.map((row, index) => {
+    const rowId = row.id;
+    const artist =
+      row.querySelector('meta[itemprop="byArtist"]')?.getAttribute('content')?.trim() ?? '';
+    const fullName =
+      row.querySelector('meta[itemprop="name"]')?.getAttribute('content')?.trim() ?? '';
+    const title =
+      artist && fullName.startsWith(`${artist} - `)
+        ? fullName.slice(artist.length + 3).trim()
+        : fullName;
+
+    const cueInputId = `${rowId.replace(/^tlp_/, 'tlp')}_cue_seconds`;
+    const cueInput = document.querySelector<HTMLInputElement>(`#${cueInputId}`);
+    const cueRaw = cueInput?.value?.trim();
+    const parsedCue = cueRaw !== undefined && cueRaw !== '' ? Number.parseInt(cueRaw, 10) : null;
+
+    const artImg = row.querySelector('img.artwork.artM');
+    const artRaw = artImg?.getAttribute('src') || artImg?.getAttribute('data-src') || '';
+    const isPlaceholderArt = !artRaw || PLACEHOLDER_ART_PATTERN.test(artRaw);
+
+    return {
+      order: index + 1,
+      cueSeconds: parsedCue !== null && Number.isNaN(parsedCue) ? null : parsedCue,
+      artist,
+      title,
+      artworkUrl: isPlaceholderArt ? undefined : artRaw,
+    };
+  });
+
+  return { mixTitle, tracks };
+}
 
 /**
  * Logs page URL/title diagnostics plus loose anchor counts when a wait times out,
@@ -212,53 +272,10 @@ export async function scrapeTracklist(
       throw waitErr;
     }
 
-    const scraped = await page.evaluate(() => {
-      const mixTitle =
-        document.querySelector('h1')?.textContent?.replace(/\s+/g, ' ').trim() ??
-        document.title.replace(/\s*\|\s*1001Tracklists.*$/i, '').trim();
-
-      const rows = Array.from(document.querySelectorAll('div[id^="tlp_"]')).filter(
-        (row) =>
-          row.querySelector('meta[itemprop="name"]') ??
-          row.querySelector('meta[itemprop="byArtist"]'),
-      );
-
-      const tracks = rows.map((row, index) => {
-        const rowId = row.id;
-        // 1001tracklists stores track metadata as <meta itemprop="..." content="..."> —
-        // textContent is always empty on <meta>, must read the content attribute.
-        const artist =
-          row.querySelector('meta[itemprop="byArtist"]')?.getAttribute('content')?.trim() ?? '';
-        const fullName =
-          row.querySelector('meta[itemprop="name"]')?.getAttribute('content')?.trim() ?? '';
-        const title =
-          artist && fullName.startsWith(`${artist} - `)
-            ? fullName.slice(artist.length + 3).trim()
-            : fullName;
-
-        // Row id is "tlp_<id>" but the matching cue input is "tlp<id>_cue_seconds" (no underscore).
-        const cueInputId = `${rowId.replace(/^tlp_/, 'tlp')}_cue_seconds`;
-        const cueInput = document.querySelector<HTMLInputElement>(`#${cueInputId}`);
-        const cueRaw = cueInput?.value?.trim();
-        const parsedCue = cueRaw !== undefined && cueRaw !== '' ? Number.parseInt(cueRaw, 10) : null;
-
-        const artImg = row.querySelector('img.artwork.artM');
-        const artRaw = artImg?.getAttribute('src') || artImg?.getAttribute('data-src') || '';
-        const isPlaceholderArt =
-          !artRaw ||
-          /default_100\.png|empty\.png|\/artworks\/default/i.test(artRaw);
-
-        return {
-          order: index + 1,
-          cueSeconds: parsedCue !== null && Number.isNaN(parsedCue) ? null : parsedCue,
-          artist,
-          title,
-          artworkUrl: isPlaceholderArt ? undefined : artRaw,
-        };
-      });
-
-      return { mixTitle, tracks };
-    });
+    const scraped = await page.evaluate((parserSource: string) => {
+      const parseTracklistDom = eval(`(${parserSource})`) as (document: Document) => ParsedTracklistDom;
+      return parseTracklistDom(document);
+    }, parseTracklistDom.toString());
 
     console.log(
       `📄 [CACP-Tracklist] Scraped "${scraped.mixTitle}" — ${scraped.tracks.length} track rows`,

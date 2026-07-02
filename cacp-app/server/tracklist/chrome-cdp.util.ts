@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -16,6 +17,14 @@ const DEFAULT_MAC_CHROME_PATH = join(
 export async function connectToChrome(
   devToolsActivePortPath = process.env.CHROME_DEVTOOLS_ACTIVE_PORT_PATH ?? DEFAULT_MAC_CHROME_PATH,
 ): Promise<Browser> {
+  if (!existsSync(devToolsActivePortPath)) {
+    throw new Error(
+      `Chrome remote debugging not detected at ${devToolsActivePortPath}. ` +
+        `Enable "Allow remote debugging for this browser instance" at chrome://inspect/#remote-debugging ` +
+        `and make sure Chrome is running, then retry.`,
+    );
+  }
+
   console.log(`🔌 [CACP-Tracklist] Reading DevToolsActivePort from ${devToolsActivePortPath}`);
   const raw = await readFile(devToolsActivePortPath, 'utf8');
   const [port, wsPath] = raw

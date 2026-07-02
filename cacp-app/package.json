@@ -12,6 +12,7 @@
     "build": "npx @deskthing/cli package",
     "setup": "node setup.js",
     "lint": "eslint .",
+    "test": "node --loader tsm --test server/tracklist/tracklist-scraper.test.ts",
     "test:tracklist": "node scripts/run-with-env.script.js --import=tsm server/tracklist/test-nora-512.script.ts",
     "preview": "vite preview"
   },
@@ -39,6 +40,7 @@
     "eslint": "^9.9.0",
     "eslint-plugin-react-hooks": "^5.1.0-rc.0",
     "eslint-plugin-react-refresh": "^0.4.9",
+    "linkedom": "^0.18.12",
     "tailwindcss": "^3.4.10",
     "tsm": "^2.3.0",
     "typescript": "^5.5.3",

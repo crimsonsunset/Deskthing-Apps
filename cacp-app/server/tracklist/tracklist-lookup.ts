@@ -12,6 +12,29 @@ import { TracklistResultSchema, type TracklistResult } from './tracklist.types.j
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+const writeLocks = new Map<string, Promise<void>>();
+
+/**
+ * Serializes read-modify-write cache operations per cache key to prevent torn writes.
+ * @param {string} cacheKey - Mix cache slug.
+ * @param {() => Promise<T>} fn - Critical section to run under the lock.
+ * @returns {Promise<T>} Result of fn.
+ */
+async function withCacheLock<T>(cacheKey: string, fn: () => Promise<T>): Promise<T> {
+  const prior = writeLocks.get(cacheKey) ?? Promise.resolve();
+  let release!: () => void;
+  const next = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  writeLocks.set(cacheKey, prior.then(() => next));
+  await prior;
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
+
 /**
  * Mirrors imageUtils dual-directory convention: dev emulator vs packaged install.
  */
@@ -70,17 +93,19 @@ export function readTracklistCache(cacheKey: string): TracklistResult | null {
 }
 
 /**
- * Persists a tracklist result to both cache directories.
+ * Persists a tracklist result to both cache directories under a per-key write lock.
  * @param {string} cacheKey - Slug filename (no extension).
  * @param {TracklistResult} result - Structured tracklist to store.
  */
-export function writeTracklistCache(cacheKey: string, result: TracklistResult): void {
-  ensureTracklistCacheDirs();
-  const payload = `${JSON.stringify(result, null, 2)}\n`;
+async function writeTracklistCache(cacheKey: string, result: TracklistResult): Promise<void> {
+  await withCacheLock(cacheKey, async () => {
+    ensureTracklistCacheDirs();
+    const payload = `${JSON.stringify(result, null, 2)}\n`;
 
-  for (const dir of TRACKLIST_CACHE_DIRS) {
-    writeFileSync(join(dir, `${cacheKey}.json`), payload, 'utf8');
-  }
+    for (const dir of TRACKLIST_CACHE_DIRS) {
+      writeFileSync(join(dir, `${cacheKey}.json`), payload, 'utf8');
+    }
+  });
 }
 
 /**
@@ -91,9 +116,16 @@ export function writeTracklistCache(cacheKey: string, result: TracklistResult): 
 function scheduleArtworkBackfill(cacheKey: string, cached: TracklistResult): void {
   void (async () => {
     try {
-      const tracks = await processTracklistArtwork(cacheKey, cached.tracks);
-      const updated: TracklistResult = { ...cached, tracks };
-      writeTracklistCache(cacheKey, updated);
+      await withCacheLock(cacheKey, async () => {
+        const fresh = readTracklistCache(cacheKey) ?? cached;
+        const tracks = await processTracklistArtwork(cacheKey, fresh.tracks);
+        const updated: TracklistResult = { ...fresh, tracks };
+        ensureTracklistCacheDirs();
+        const payload = `${JSON.stringify(updated, null, 2)}\n`;
+        for (const dir of TRACKLIST_CACHE_DIRS) {
+          writeFileSync(join(dir, `${cacheKey}.json`), payload, 'utf8');
+        }
+      });
       console.log(`🖼️ [CACP-Tracklist] Artwork backfill complete for ${cacheKey}`);
       const { CACPMediaStore } = await import('../mediaStore.js');
       CACPMediaStore.getInstance().handleTracklistReady();
@@ -150,7 +182,7 @@ export async function lookupTracklist(
       mixTitle: scraped.mixTitle,
       tracks,
     };
-    writeTracklistCache(cacheKey, result);
+    await writeTracklistCache(cacheKey, result);
     console.log(`🎧 [CACP-Tracklist] lookupTracklist complete — wrote cache ${cacheKey} (${result.tracks.length} tracks)`);
     return result;
   } catch (err: unknown) {
