@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { select } from '@inquirer/prompts';
 import { getTerminalType, openInNewTab } from './terminal.helpers.js';
+import { loadEnvFileIfExists } from './load-env.helpers.js';
 
 const execAsync = promisify(exec);
 
@@ -12,6 +13,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../..');
 const cacpAppDir = path.join(rootDir, 'cacp-app');
 const cacpExtensionDir = path.join(rootDir, 'cacp-extension');
+
+loadEnvFileIfExists(path.join(cacpAppDir, '.env'));
 
 /** @type {import('node:child_process').ChildProcess[]} */
 const childProcesses = [];

@@ -3,6 +3,7 @@ import { SongAbilities, SongData } from "@deskthing/types";
 import type { WebSocket } from 'ws';
 import { saveRemoteImage } from "./imageUtils";
 import { sendDeskThingError, sendDeskThingWarning } from "./deskthing-log.helpers.js";
+import { maybeAutoLookupTracklist } from "./tracklist/tracklist.handlers.js";
 
 /**
  * Chrome Extension Message Types
@@ -373,6 +374,7 @@ export class CACPMediaStore {
         
         DeskThing.sendSong(musicPayload);
         this.lastSentPayload = musicPayload;
+        maybeAutoLookupTracklist(musicPayload.artist, musicPayload.track_name);
       } else {
         // Quiet log for duplicate data
         console.log('📋 [CACP-MediaStore] Skipping duplicate payload');

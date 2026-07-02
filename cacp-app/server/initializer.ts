@@ -1,7 +1,8 @@
 import { DeskThing } from "@deskthing/server";
-import { AUDIO_REQUESTS, MusicEventPayloads, SongEvent } from "@deskthing/types";
+import { AUDIO_REQUESTS, SongEvent } from "@deskthing/types";
 import { CACPMediaStore } from "./mediaStore";
 import { sendDeskThingWarning } from "./deskthing-log.helpers.js";
+import { registerTracklistHandlers } from "./tracklist/tracklist.handlers.js";
 
 /**
  * Initialize DeskThing event listeners for CACP
@@ -10,9 +11,8 @@ import { sendDeskThingWarning } from "./deskthing-log.helpers.js";
 export const initializeListeners = async () => {
   console.log('🎛️ [CACP-Initializer] Setting up DeskThing event listeners for CACP');
   
-  const mediaStore = CACPMediaStore.getInstance();
-  
-  // Initialize MediaStore (no specific initialization needed for CACP)
+  CACPMediaStore.getInstance();
+  registerTracklistHandlers();
   console.log('✅ [CACP-Initializer] MediaStore instance ready');
 };
 

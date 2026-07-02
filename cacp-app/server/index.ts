@@ -4,6 +4,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { CACPMediaStore } from "./mediaStore";
 import { deleteImages } from "./imageUtils";
 import { initializeListeners } from "./initializer";
+import { initializeSettings } from "./initSettings.js";
 import { sendDeskThingError, sendDeskThingLog } from "./deskthing-log.helpers.js";
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
@@ -103,7 +104,7 @@ const start = async () => {
   try {
             console.log(`🚀 [CACP-Server] Starting enhanced CACP app v${CACP_VERSION} with comprehensive logging and image processing`);
     
-    // Initialize event listeners first
+    await initializeSettings();
     await initializeListeners();
     
     // Start WebSocket server

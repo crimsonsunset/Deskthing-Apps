@@ -4,6 +4,16 @@ import {
   SongAbilities,
 } from '@deskthing/types';
 import { useCacpMusic } from './hooks/use-cacp-music.hook';
+import {
+  findCurrentTracklistTrack,
+  formatCueSeconds,
+  useCacpTracklist,
+  type TracklistResultView,
+  type TracklistState,
+} from './hooks/use-cacp-tracklist.hook';
+
+const DEV_LOOKUP_ARTIST = 'Nora En Pure';
+const DEV_LOOKUP_TITLE = 'Purified #512';
 
 /**
  * Format milliseconds as m:ss for the progress display.
@@ -40,16 +50,134 @@ const getProgressPercent = (
 };
 
 /**
- * CACP emulator now-playing shell: artwork, metadata, progress, and transport.
+ * Renders the 1001tracklists lookup panel (status, tracks, current in-mix highlight).
+ */
+function TracklistPanel({
+  status,
+  result,
+  error,
+  progressMs,
+  onDevLookup,
+  onLookupCurrent,
+  currentArtist,
+  currentTitle,
+}: {
+  status: TracklistState['status'];
+  result: TracklistResultView | null;
+  error: string | null;
+  progressMs?: number | null;
+  onDevLookup: () => void;
+  onLookupCurrent?: () => void;
+  currentArtist?: string | null;
+  currentTitle?: string | null;
+}) {
+  const currentTrack = result
+    ? findCurrentTracklistTrack(result.tracks, progressMs)
+    : null;
+
+  return (
+    <section className="cacp-tracklist" aria-label="In-mix tracklist">
+      <div className="cacp-tracklist-header">
+        <h2>1001Tracklists</h2>
+        <div className="cacp-tracklist-actions">
+          {onLookupCurrent && currentArtist && currentTitle ? (
+            <button type="button" onClick={onLookupCurrent} disabled={status === 'loading'}>
+              Lookup current mix
+            </button>
+          ) : null}
+          <button type="button" onClick={onDevLookup} disabled={status === 'loading'}>
+            Test Nora #512
+          </button>
+        </div>
+      </div>
+
+      {status === 'loading' ? (
+        <p className="cacp-tracklist-status">Looking up tracklist…</p>
+      ) : null}
+
+      {status === 'error' && error ? (
+        <p className="cacp-tracklist-error">{error}</p>
+      ) : null}
+
+      {status === 'idle' ? (
+        <p className="cacp-tracklist-status">
+          Auto-lookup runs when a mix starts playing. Or hit Test Nora #512.
+        </p>
+      ) : null}
+
+      {result ? (
+        <>
+          <p className="cacp-tracklist-mix-title">{result.mixTitle}</p>
+          {currentTrack ? (
+            <p className="cacp-tracklist-now">
+              Now in mix: {currentTrack.artist} — {currentTrack.title}
+            </p>
+          ) : null}
+          <ol className="cacp-tracklist-rows">
+            {result.tracks.map((track) => {
+              const isActive = currentTrack?.order === track.order;
+
+              return (
+                <li
+                  key={`${track.order}-${track.cueSeconds}-${track.title}`}
+                  className={isActive ? 'is-active' : undefined}
+                >
+                  <span className="cacp-tracklist-cue">{formatCueSeconds(track.cueSeconds)}</span>
+                  <span className="cacp-tracklist-track">
+                    {track.artist ? `${track.artist} — ` : ''}
+                    {track.title}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+        </>
+      ) : null}
+
+      {status === 'ready' && !result ? (
+        <p className="cacp-tracklist-status">No 1001tracklists match for this mix.</p>
+      ) : null}
+    </section>
+  );
+}
+
+/**
+ * CACP emulator now-playing shell: mix on the left, in-mix tracklist on the right.
  */
 export default function App() {
   const { song, isPlaying, sendTransport, togglePlayPause, hasAbility, sendSeek } =
     useCacpMusic();
+  const { status, result, error, lookupTracklist } = useCacpTracklist();
   const [hoverRatio, setHoverRatio] = useState<number | null>(null);
+
+  const handleDevLookup = () => {
+    lookupTracklist(DEV_LOOKUP_ARTIST, DEV_LOOKUP_TITLE);
+  };
+
+  const handleLookupCurrent = () => {
+    if (!song?.artist || !song.track_name) {
+      return;
+    }
+
+    lookupTracklist(song.artist, song.track_name);
+  };
+
+  const tracklistPanel = (
+    <TracklistPanel
+      status={status}
+      result={result}
+      error={error}
+      progressMs={song?.track_progress}
+      onDevLookup={handleDevLookup}
+      onLookupCurrent={song ? handleLookupCurrent : undefined}
+      currentArtist={song?.artist}
+      currentTitle={song?.track_name}
+    />
+  );
 
   if (!song) {
     return (
-      <div className="cacp-app">
+      <div className="cacp-app cacp-app-empty-layout">
         <div className="cacp-empty">
           <h1>CACP</h1>
           <p>
@@ -57,6 +185,7 @@ export default function App() {
             loaded.
           </p>
         </div>
+        {tracklistPanel}
       </div>
     );
   }
@@ -114,96 +243,100 @@ export default function App() {
 
   return (
     <div className="cacp-app">
-      <section className="cacp-now-playing">
-        {song.thumbnail ? (
-          <img
-            className="cacp-artwork"
-            src={song.thumbnail}
-            alt=""
-          />
-        ) : (
-          <div className="cacp-artwork cacp-artwork-placeholder">No art</div>
-        )}
-
-        <div className="cacp-meta">
-          <h1 className="cacp-title">{song.track_name || 'Unknown track'}</h1>
-          <p className="cacp-artist">{song.artist || 'Unknown artist'}</p>
-          <p className="cacp-source">
-            {song.source}
-            {song.device ? ` · ${song.device}` : ''}
-          </p>
-          <span
-            className={`cacp-playing-badge${isPlaying ? '' : ' is-paused'}`}
-          >
-            {isPlaying ? 'Playing' : 'Paused'}
-          </span>
-        </div>
-      </section>
-
-      <section className="cacp-progress">
-        <div
-          className="cacp-progress-bar-wrapper"
-          onMouseMove={handleProgressBarHover}
-          onMouseLeave={() => setHoverRatio(null)}
-        >
-          {hoverRatio != null && (
-            <div
-              className="cacp-progress-hover-tooltip"
-              style={{ left: `${hoverRatio * 100}%` }}
-            >
-              {formatMs((song.track_duration ?? 0) * hoverRatio)}
-            </div>
-          )}
-          <div
-            className="cacp-progress-bar cacp-progress-bar-interactive"
-            onClick={handleProgressBarClick}
-          >
-            <div
-              className="cacp-progress-fill"
-              style={{ width: `${progressPercent}%` }}
+      <div className="cacp-main">
+        <section className="cacp-now-playing">
+          {song.thumbnail ? (
+            <img
+              className="cacp-artwork"
+              src={song.thumbnail}
+              alt=""
             />
+          ) : (
+            <div className="cacp-artwork cacp-artwork-placeholder">No art</div>
+          )}
+
+          <div className="cacp-meta">
+            <h1 className="cacp-title">{song.track_name || 'Unknown track'}</h1>
+            <p className="cacp-artist">{song.artist || 'Unknown artist'}</p>
+            <p className="cacp-source">
+              {song.source}
+              {song.device ? ` · ${song.device}` : ''}
+            </p>
+            <span
+              className={`cacp-playing-badge${isPlaying ? '' : ' is-paused'}`}
+            >
+              {isPlaying ? 'Playing' : 'Paused'}
+            </span>
+          </div>
+        </section>
+
+        <section className="cacp-progress">
+          <div
+            className="cacp-progress-bar-wrapper"
+            onMouseMove={handleProgressBarHover}
+            onMouseLeave={() => setHoverRatio(null)}
+          >
             {hoverRatio != null && (
               <div
-                className="cacp-progress-hover-marker"
+                className="cacp-progress-hover-tooltip"
                 style={{ left: `${hoverRatio * 100}%` }}
-              />
+              >
+                {formatMs((song.track_duration ?? 0) * hoverRatio)}
+              </div>
             )}
+            <div
+              className="cacp-progress-bar cacp-progress-bar-interactive"
+              onClick={handleProgressBarClick}
+            >
+              <div
+                className="cacp-progress-fill"
+                style={{ width: `${progressPercent}%` }}
+              />
+              {hoverRatio != null && (
+                <div
+                  className="cacp-progress-hover-marker"
+                  style={{ left: `${hoverRatio * 100}%` }}
+                />
+              )}
+            </div>
           </div>
-        </div>
-        <div className="cacp-progress-times">
-          <span>{formatMs(song.track_progress)}</span>
-          <span>{formatMs(song.track_duration)}</span>
-        </div>
-      </section>
+          <div className="cacp-progress-times">
+            <span>{formatMs(song.track_progress)}</span>
+            <span>{formatMs(song.track_duration)}</span>
+          </div>
+        </section>
 
-      <nav className="cacp-transport" aria-label="Playback controls">
-        <button
-          type="button"
-          disabled={!hasAbility(SongAbilities.PREVIOUS)}
-          onClick={() => sendTransport(AUDIO_REQUESTS.PREVIOUS)}
-        >
-          Prev
-        </button>
-        <button
-          type="button"
-          className="is-primary"
-          disabled={
-            isPlaying
-              ? !hasAbility(SongAbilities.PAUSE)
-              : !hasAbility(SongAbilities.PLAY)
-          }
-          onClick={togglePlayPause}
-        >
-          {isPlaying ? 'Pause' : 'Play'}
-        </button>
-        <button
-          type="button"
-          disabled={!hasAbility(SongAbilities.NEXT)}
-          onClick={() => sendTransport(AUDIO_REQUESTS.NEXT)}
-        >
-          Next
-        </button>
-      </nav>
+        <nav className="cacp-transport" aria-label="Playback controls">
+          <button
+            type="button"
+            disabled={!hasAbility(SongAbilities.PREVIOUS)}
+            onClick={() => sendTransport(AUDIO_REQUESTS.PREVIOUS)}
+          >
+            Prev
+          </button>
+          <button
+            type="button"
+            className="is-primary"
+            disabled={
+              isPlaying
+                ? !hasAbility(SongAbilities.PAUSE)
+                : !hasAbility(SongAbilities.PLAY)
+            }
+            onClick={togglePlayPause}
+          >
+            {isPlaying ? 'Pause' : 'Play'}
+          </button>
+          <button
+            type="button"
+            disabled={!hasAbility(SongAbilities.NEXT)}
+            onClick={() => sendTransport(AUDIO_REQUESTS.NEXT)}
+          >
+            Next
+          </button>
+        </nav>
+      </div>
+
+      {tracklistPanel}
     </div>
   );
 }

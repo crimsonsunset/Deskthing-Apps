@@ -8,11 +8,11 @@
   "scripts": {
     "dev:vite": "vite",
     "dev:wrapper": "npx @deskthing/cli dev",
-    "dev": "concurrently \"npm run dev:vite\" \"npm run dev:wrapper\"",
+    "dev": "node scripts/run-dev.script.js",
     "build": "npx @deskthing/cli package",
     "setup": "node setup.js",
     "lint": "eslint .",
-    "test:tracklist": "node --import=tsm server/tracklist/test-nora-512.script.ts",
+    "test:tracklist": "node scripts/run-with-env.script.js --import=tsm server/tracklist/test-nora-512.script.ts",
     "preview": "vite preview"
   },
   "dependencies": {
