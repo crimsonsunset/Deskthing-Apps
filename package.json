@@ -1,7 +1,7 @@
 {
   "name": "deskthing-apps",
   "version": "0.12.0",
-  "description": "Chrome Audio Control Platform (CACP) - Universal Chrome extension for DeskThing audio control with SoundCloud legacy support",
+  "description": "Chrome Audio Control Platform (CACP) - Universal Chrome extension for DeskThing audio control",
   "homepage": "https://github.com/ItsRiprod/Deskthing-Apps#readme",
   "bugs": {
     "url": "https://github.com/ItsRiprod/Deskthing-Apps/issues"
@@ -19,9 +19,7 @@
     "build:compile": "tsc",
     "start": "node scripts/dev/start.js",
     "release": "node scripts/dist/index.js",
-    "build:soundcloud": "cd soundcloud-app && npm run build",
     "build:cacp": "cd cacp-app && npm run build",
-    "dev:soundcloud": "cd soundcloud-app && npm run dev",
     "dev:cacp": "cd cacp-app && npm run dev",
     "start:dev": "node scripts/dev/start.js",
     "start:emulator": "node scripts/dev/start.js --mode=emulator",
@@ -31,7 +29,7 @@
     "player:control": "node scripts/player-control.js",
     "kill-port": "node scripts/kill-port-8080.js",
     "clean": "rm -rf */dist */node_modules",
-    "install:all": "npm install && cd soundcloud-app && npm install && cd ../cacp-app && npm install && cd ../cacp-extension && npm install"
+    "install:all": "npm install && cd cacp-app && npm install && cd ../cacp-extension && npm install"
   },
   "devDependencies": {
     "@inquirer/prompts": "^7.5.3",
@@ -47,7 +45,6 @@
     "ws": "^8.18.3"
   },
   "workspaces": [
-    "soundcloud-app",
     "cacp-app",
     "cacp-extension"
   ],

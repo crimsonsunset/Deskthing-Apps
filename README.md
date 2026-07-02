@@ -8,11 +8,7 @@
 
 ## 📁 **Repository Structure**
 
-### **🎵 Current Working Apps (SoundCloud)**
-- **`soundcloud-app/`** - Working SoundCloud DeskThing app (v1.0.1 beta)
-- **`soundcloud-extension/`** - Working Chrome extension for SoundCloud
-
-### **🎯 Next Generation (CACP Development)**
+### **🎯 CACP (Chrome Audio Control Platform)**
 - **`cacp-app/`** - Universal DeskThing app (v0.1.6)
 - **`cacp-extension/`** - Multi-site Chrome extension (v1.1.4) — HMR dev via CRXJS
 
@@ -171,9 +167,6 @@ v1.1.4
 CACP is a **universal Chrome audio control platform** that provides seamless music control integration between web-based audio services and DeskThing. Instead of being limited to just SoundCloud, CACP supports multiple music streaming platforms through a modular, contributor-friendly architecture.
 
 ## 🎵 **Supported Sites**
-
-### **✅ Currently Working (SoundCloud Apps)**
-- **SoundCloud** - Complete implementation with real-time control via `soundcloud-extension/`
 
 ### **🚧 CACP Development Status**
 - **SoundCloud** - ✅ Fully migrated to modular architecture (v0.3.26)
