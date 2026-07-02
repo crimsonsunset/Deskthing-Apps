@@ -87,14 +87,19 @@ export const useCacpMusic = (): CacpMusicState => {
    * Send an absolute seek request (track position in ms) to the DeskThing server.
    */
   const sendSeek = useCallback((positionMs: number) => {
-    console.log(`[CACP-Seek] hook sendSeek positionMs=${positionMs}`);
+    console.log('[CACP-Seek] hook sendSeek', {
+      positionMs,
+      positionSeconds: Math.round(positionMs / 1000),
+      songId: song?.id ?? null,
+      trackName: song?.track_name ?? null,
+    });
     DeskThing.send({
       app: 'music',
       type: SongEvent.SET,
       request: AUDIO_REQUESTS.SEEK,
       payload: positionMs,
     });
-  }, []);
+  }, [song?.id, song?.track_name]);
 
   const hasAbility = useCallback(
     (ability: SongAbilities) => {

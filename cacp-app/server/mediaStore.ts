@@ -4,6 +4,14 @@ import type { WebSocket } from 'ws';
 import { saveRemoteImage } from "./imageUtils";
 import { sendDeskThingError, sendDeskThingWarning } from "./deskthing-log.helpers.js";
 import { maybeAutoLookupTracklist } from "./tracklist/tracklist.handlers.js";
+import {
+  buildTracklistCacheKey,
+  readTracklistCache,
+} from "./tracklist/tracklist-lookup.js";
+import {
+  buildInMixSongFields,
+  findCurrentTracklistTrack,
+} from "./tracklist/tracklist-current-track.helpers.js";
 
 /**
  * Chrome Extension Message Types
@@ -278,7 +286,14 @@ export class CACPMediaStore {
           const success = message.success ? 'SUCCESS' : 'FAILED';
           console.log(`🎮 [CACP-MediaStore] Command result for ${action}: ${success}`);
           if (action === 'seek') {
-            console.log(`[CACP-Seek] command-result received time=${message.time} success=${message.success} detail=${JSON.stringify(message.detail)} error=${message.error || 'none'}`);
+            console.log('[CACP-Seek] mediaStore command-result', {
+              requestedTimeSeconds: message.time,
+              success: message.success,
+              detail: message.detail ?? null,
+              error: message.error || null,
+              cachedPositionSeconds: this.extensionData.position ?? 0,
+              cachedDurationSeconds: this.extensionData.duration ?? 0,
+            });
           }
           if (!message.success) {
             sendDeskThingError(`❌ [CACP-MediaStore] Command ${action} failed on extension side: ${message.error || JSON.stringify(message.detail) || 'unknown reason'}`);
@@ -324,46 +339,101 @@ export class CACPMediaStore {
   }
 
   /**
+   * Pushes enriched display metadata to the extension popup via the WS bridge.
+   * @param {object} display - Format A fields for popup rendering.
+   */
+  private sendDisplayMetadataToExtension(display: {
+    title: string;
+    artist: string | null;
+    thumbnail: string | null;
+    mixTitle: string;
+    mixArtist: string;
+    inMixOrder?: number;
+  }) {
+    if (!this.extensionWebSocket) {
+      return;
+    }
+
+    try {
+      this.extensionWebSocket.send(JSON.stringify({
+        type: 'displayMetadata',
+        ...display,
+        timestamp: Date.now(),
+      }));
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      sendDeskThingWarning(`⚠️ [CACP-MediaStore] Failed to send displayMetadata: ${message}`);
+    }
+  }
+
+  /**
    * Send Chrome Extension data to DeskThing in the expected format
    * Enhanced with comprehensive logging and data validation from SoundCloud app
    */
   private sendExtensionDataToDeskThing() {
-    if (!this.extensionData.title && !this.extensionData.artist) {
+    const rawTitle = this.extensionData.title || '';
+    const rawArtist = this.extensionData.artist || '';
+
+    if (!rawTitle && !rawArtist) {
       console.log('📋 [CACP-MediaStore] No meaningful data to send (missing title and artist)');
       return;
     }
 
     try {
+      const mixThumbnail = this.extensionData.processedArtwork || this.extensionData.artwork || null;
+      const progressMs = this.extensionData.position
+        ? Math.round(this.extensionData.position * 1000)
+        : null;
+
+      let trackName = rawTitle || 'Unknown Track';
+      let artistLine: string | null = rawArtist || null;
+      let thumbnail: string | null = mixThumbnail;
+      let thumbnailRemote: string | null = mixThumbnail?.startsWith('http') ? mixThumbnail : null;
+      let inMixOrder: number | undefined;
+
+      const cacheKey = buildTracklistCacheKey(rawArtist, rawTitle);
+      const cached = readTracklistCache(cacheKey);
+      if (cached?.tracks.length) {
+        const current = findCurrentTracklistTrack(cached.tracks, progressMs);
+        if (current) {
+          const enriched = buildInMixSongFields(current, rawTitle, rawArtist, mixThumbnail);
+          trackName = enriched.track_name;
+          artistLine = enriched.artist;
+          thumbnail = enriched.thumbnail;
+          thumbnailRemote = enriched.thumbnailRemote;
+          inMixOrder = enriched.inMixOrder;
+        }
+      }
+
       const musicPayload: SongData = {
         version: 2,
         album: this.extensionData.album || null,
-        artist: this.extensionData.artist || null,
+        artist: artistLine,
         playlist: null,
         playlist_id: null,
-        track_name: this.extensionData.title || 'Unknown Track',
+        track_name: trackName,
         shuffle_state: null,
         repeat_state: "off",
         is_playing: this.extensionData.isPlaying || false,
         abilities: [
-          SongAbilities.NEXT, 
-          SongAbilities.PREVIOUS, 
-          SongAbilities.PLAY, 
+          SongAbilities.NEXT,
+          SongAbilities.PREVIOUS,
+          SongAbilities.PLAY,
           SongAbilities.PAUSE
         ],
         track_duration: this.extensionData.duration ? Math.round(this.extensionData.duration * 1000) : null,
-        track_progress: this.extensionData.position ? Math.round(this.extensionData.position * 1000) : null,
+        track_progress: progressMs,
         volume: 0,
-        thumbnail: this.extensionData.processedArtwork || this.extensionData.artwork || null, // Prefer processed artwork
+        thumbnail,
         device: `CACP Extension (${this.extensionData.site || 'unknown'})`,
         id: this.extensionData.sourceId?.toString() || null,
         device_id: 'cacp-extension',
         source: this.extensionData.site || 'cacp-extension'
       };
 
-      // Avoid sending duplicate payloads
-      const payloadKey = `${musicPayload.track_name}-${musicPayload.artist}-${musicPayload.is_playing}-${musicPayload.track_progress}`;
-      const lastKey = this.lastSentPayload ? 
-        `${this.lastSentPayload.track_name}-${this.lastSentPayload.artist}-${this.lastSentPayload.is_playing}-${this.lastSentPayload.track_progress}` : 
+      const payloadKey = `${musicPayload.track_name}-${musicPayload.artist}-${musicPayload.is_playing}-${musicPayload.track_progress}-${musicPayload.thumbnail ?? ''}`;
+      const lastKey = this.lastSentPayload ?
+        `${this.lastSentPayload.track_name}-${this.lastSentPayload.artist}-${this.lastSentPayload.is_playing}-${this.lastSentPayload.track_progress}-${this.lastSentPayload.thumbnail ?? ''}` :
         null;
 
       if (payloadKey !== lastKey) {
@@ -371,12 +441,19 @@ export class CACPMediaStore {
         if (musicPayload.thumbnail) {
           console.log(`🖼️ [CACP-MediaStore] Including artwork: ${musicPayload.thumbnail}`);
         }
-        
+
         DeskThing.sendSong(musicPayload);
         this.lastSentPayload = musicPayload;
-        maybeAutoLookupTracklist(musicPayload.artist, musicPayload.track_name);
+        maybeAutoLookupTracklist(rawArtist, rawTitle);
+        this.sendDisplayMetadataToExtension({
+          title: trackName,
+          artist: artistLine,
+          thumbnail: thumbnailRemote,
+          mixTitle: rawTitle,
+          mixArtist: rawArtist,
+          inMixOrder,
+        });
       } else {
-        // Quiet log for duplicate data
         console.log('📋 [CACP-MediaStore] Skipping duplicate payload');
       }
 
@@ -413,11 +490,23 @@ export class CACPMediaStore {
     }
 
     const seconds = Math.round(data.positionMs / 1000);
-    console.log(`[CACP-Seek] mediaStore handleSeek positionMs=${data.positionMs} → time=${seconds}s`);
+    const cachedPosition = this.extensionData.position ?? 0;
+    const cachedDuration = this.extensionData.duration ?? 0;
 
-    if (this.extensionData.duration) {
-      const percentage = (seconds / this.extensionData.duration) * 100;
-      console.log(`[CACP-Seek] mediaStore seek target ${percentage.toFixed(1)}% of known duration ${this.extensionData.duration}s`);
+    console.log('[CACP-Seek] mediaStore handleSeek', {
+      positionMs: data.positionMs,
+      timeSeconds: seconds,
+      cachedPositionSeconds: cachedPosition,
+      cachedDurationSeconds: cachedDuration,
+      cachedPlaying: this.extensionData.isPlaying,
+      pctOfCachedDuration:
+        cachedDuration > 0 ? `${((seconds / cachedDuration) * 100).toFixed(1)}%` : null,
+      exceedsCachedDuration: cachedDuration > 0 ? seconds > cachedDuration : null,
+    });
+
+    if (cachedDuration) {
+      const percentage = (seconds / cachedDuration) * 100;
+      console.log(`[CACP-Seek] mediaStore seek target ${percentage.toFixed(1)}% of known duration ${cachedDuration}s`);
     } else {
       console.log('[CACP-Seek] mediaStore seek — no extension duration cached yet');
     }
@@ -446,6 +535,15 @@ export class CACPMediaStore {
 
   public handleRefresh() {
     console.log('🔄 [CACP-MediaStore] REFRESH request - sending current data');
+    this.sendExtensionDataToDeskThing();
+  }
+
+  /**
+   * Re-sends song state after a tracklist lookup completes (clears dedupe cache).
+   */
+  public handleTracklistReady() {
+    console.log('🎧 [CACP-MediaStore] Tracklist ready — forcing display refresh');
+    this.lastSentPayload = null;
     this.sendExtensionDataToDeskThing();
   }
 

@@ -4,6 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { connectToChrome } from './chrome-cdp.util.js';
 import { matchBestCandidate } from './tracklist-matcher.js';
 import { scrapeTracklist, searchTracklists } from './tracklist-scraper.js';
+import {
+  processTracklistArtwork,
+  tracklistNeedsArtworkBackfill,
+} from './tracklist-artwork.helpers.js';
 import { TracklistResultSchema, type TracklistResult } from './tracklist.types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -80,6 +84,27 @@ export function writeTracklistCache(cacheKey: string, result: TracklistResult): 
 }
 
 /**
+ * Lazy-downloads missing processed artwork for a cached tracklist and rewrites cache.
+ * @param {string} cacheKey - Mix cache slug.
+ * @param {TracklistResult} cached - Cached tracklist to backfill.
+ */
+function scheduleArtworkBackfill(cacheKey: string, cached: TracklistResult): void {
+  void (async () => {
+    try {
+      const tracks = await processTracklistArtwork(cacheKey, cached.tracks);
+      const updated: TracklistResult = { ...cached, tracks };
+      writeTracklistCache(cacheKey, updated);
+      console.log(`🖼️ [CACP-Tracklist] Artwork backfill complete for ${cacheKey}`);
+      const { CACPMediaStore } = await import('../mediaStore.js');
+      CACPMediaStore.getInstance().handleTracklistReady();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`🖼️ [CACP-Tracklist] Artwork backfill failed for ${cacheKey}: ${message}`);
+    }
+  })();
+}
+
+/**
  * Looks up a 1001tracklists tracklist for a SoundCloud mix (search → match → scrape), with disk cache.
  * @param {string} artist - SoundCloud artist name.
  * @param {string} title - SoundCloud mix title.
@@ -95,6 +120,9 @@ export async function lookupTracklist(
   const cached = readTracklistCache(cacheKey);
   if (cached) {
     console.log(`💾 [CACP-Tracklist] Cache hit for ${cacheKey} — ${cached.tracks.length} tracks, skipping network`);
+    if (tracklistNeedsArtworkBackfill(cached.tracks)) {
+      scheduleArtworkBackfill(cacheKey, cached);
+    }
     return cached;
   }
 
@@ -115,7 +143,13 @@ export async function lookupTracklist(
       return null;
     }
 
-    const result = await scrapeTracklist(browser, match.matchedUrl);
+    const scraped = await scrapeTracklist(browser, match.matchedUrl);
+    const tracks = await processTracklistArtwork(cacheKey, scraped.tracks);
+    const result: TracklistResult = {
+      sourceUrl: scraped.sourceUrl,
+      mixTitle: scraped.mixTitle,
+      tracks,
+    };
     writeTracklistCache(cacheKey, result);
     console.log(`🎧 [CACP-Tracklist] lookupTracklist complete — wrote cache ${cacheKey} (${result.tracks.length} tracks)`);
     return result;

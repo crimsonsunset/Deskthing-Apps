@@ -16,6 +16,8 @@ export const TracklistTrackSchema = z.object({
   cueSeconds: z.number().nullable(),
   artist: z.string(),
   title: z.string(),
+  artworkUrl: z.string().url().optional(),
+  processedArtwork: z.string().optional(),
 });
 
 export const TracklistResultSchema = z.object({

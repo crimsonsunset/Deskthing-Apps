@@ -57,6 +57,9 @@ export async function runTracklistLookup(
   try {
     const result = await lookupTracklist(artist, title);
     sendTracklistToClient({ status: 'ready', result, mixKey });
+    void import('../mediaStore.js').then(({ CACPMediaStore }) => {
+      CACPMediaStore.getInstance().handleTracklistReady();
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     sendTracklistToClient({ status: 'error', result: null, error: message, mixKey });

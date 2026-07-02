@@ -69,7 +69,12 @@ function TracklistPanel({
   progressMs?: number | null;
   onDevLookup: () => void;
   onLookupCurrent?: () => void;
-  onSeekToTrack?: (cueSeconds: number) => void;
+  onSeekToTrack?: (track: {
+    order: number;
+    cueSeconds: number;
+    artist: string;
+    title: string;
+  }) => void;
   currentArtist?: string | null;
   currentTitle?: string | null;
 }) {
@@ -129,9 +134,18 @@ function TracklistPanel({
                     type="button"
                     className="cacp-tracklist-row-button"
                     disabled={!canSeek}
-                    onClick={() =>
-                      track.cueSeconds != null && onSeekToTrack?.(track.cueSeconds)
-                    }
+                    onClick={() => {
+                      if (track.cueSeconds == null) {
+                        return;
+                      }
+
+                      onSeekToTrack?.({
+                        order: track.order,
+                        cueSeconds: track.cueSeconds,
+                        artist: track.artist,
+                        title: track.title,
+                      });
+                    }}
                   >
                     <span className="cacp-tracklist-cue">{formatCueSeconds(track.cueSeconds)}</span>
                     <span className="cacp-tracklist-track">
@@ -174,8 +188,35 @@ export default function App() {
     lookupTracklist(song.artist, song.track_name);
   };
 
-  const handleSeekToTrack = (cueSeconds: number) => {
-    sendSeek(cueSeconds * 1000);
+  /**
+   * Seek the mix to a tracklist cue time and log the full client-side context.
+   */
+  const handleSeekToTrack = (track: {
+    order: number;
+    cueSeconds: number;
+    artist: string;
+    title: string;
+  }) => {
+    const targetMs = track.cueSeconds * 1000;
+    const durationMs = song?.track_duration;
+    const progressMs = song?.track_progress;
+
+    console.log('[CACP-Seek] App tracklist row click', {
+      order: track.order,
+      artist: track.artist,
+      title: track.title,
+      cueSeconds: track.cueSeconds,
+      targetMs,
+      currentProgressMs: progressMs,
+      trackDurationMs: durationMs,
+      pctOfDuration:
+        durationMs && durationMs > 0
+          ? `${((targetMs / durationMs) * 100).toFixed(1)}%`
+          : null,
+      exceedsDuration: durationMs != null && durationMs > 0 ? targetMs > durationMs : null,
+    });
+
+    sendSeek(targetMs);
   };
 
   const tracklistPanel = (

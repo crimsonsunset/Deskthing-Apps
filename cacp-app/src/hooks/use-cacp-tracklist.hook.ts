@@ -6,6 +6,8 @@ export type TracklistTrackView = {
   cueSeconds: number | null;
   artist: string;
   title: string;
+  artworkUrl?: string;
+  processedArtwork?: string;
 };
 
 export type TracklistResultView = {

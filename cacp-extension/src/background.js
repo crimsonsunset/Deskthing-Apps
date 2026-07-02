@@ -38,6 +38,7 @@ class GlobalMediaManager {
     this.activeSources = new Map(); // tabId -> MediaSource
     this.currentPriority = null; // Currently highest priority source
     this.siteHandlers = new Map(); // tabId -> handler info
+    this.enrichedDisplay = null; // Server-provided Format A metadata overlay
     this.updateInterval = null;
     
     backgroundLogger.info('GlobalMediaManager initialized');
@@ -77,6 +78,19 @@ class GlobalMediaManager {
     this.notifyPopup('sources-updated', this.getSourcesList());
     // Push current priority snapshot to app bridge
     pushPriorityToBridge(this.currentPriority);
+  }
+
+  /**
+   * Stores server-enriched in-mix display metadata for popup / priority overlay.
+   * @param {object|null} display - Format A fields from CACP server, or null to clear.
+   */
+  setEnrichedDisplay(display) {
+    this.enrichedDisplay = display;
+    backgroundLogger.debug('Enriched display updated', {
+      title: display?.title,
+      inMixOrder: display?.inMixOrder,
+    });
+    this.notifyPopup('sources-updated', this.getSourcesList());
   }
 
   /**
@@ -217,11 +231,19 @@ class GlobalMediaManager {
       }
       const response = await chrome.tabs.sendMessage(targetTabId, payload);
 
-      backgroundLogger.debug('Control command sent', {
-        command,
-        targetTabId,
-        success: response?.success
-      });
+      if (command === 'seek') {
+        backgroundLogger.info('[CACP-Seek] sendControlCommand seek response', {
+          targetTabId,
+          time: arguments[2],
+          response,
+        });
+      } else {
+        backgroundLogger.debug('Control command sent', {
+          command,
+          targetTabId,
+          success: response?.success
+        });
+      }
 
       return response;
     } catch (error) {
@@ -273,7 +295,8 @@ class GlobalMediaManager {
     return {
       sources: this.getSourcesList(),
       currentPriority: this.currentPriority,
-      totalSources: this.activeSources.size
+      totalSources: this.activeSources.size,
+      enrichedDisplay: this.enrichedDisplay,
     };
   }
 }
@@ -463,6 +486,17 @@ function connectBridge() {
         const msg = JSON.parse(evt.data);
         if (msg?.type === 'pong') {
           backgroundLogger.trace('Bridge pong received', { timestamp: msg.timestamp });
+          return;
+        }
+        if (msg?.type === 'displayMetadata') {
+          mediaManager.setEnrichedDisplay({
+            title: msg.title,
+            artist: msg.artist ?? null,
+            thumbnail: msg.thumbnail ?? null,
+            mixTitle: msg.mixTitle,
+            mixArtist: msg.mixArtist,
+            inMixOrder: msg.inMixOrder,
+          });
           return;
         }
         if (msg?.type !== 'media-command' || !msg?.action) return;

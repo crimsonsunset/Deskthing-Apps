@@ -242,11 +242,18 @@ export async function scrapeTracklist(
         const cueRaw = cueInput?.value?.trim();
         const parsedCue = cueRaw !== undefined && cueRaw !== '' ? Number.parseInt(cueRaw, 10) : null;
 
+        const artImg = row.querySelector('img.artwork.artM');
+        const artRaw = artImg?.getAttribute('src') || artImg?.getAttribute('data-src') || '';
+        const isPlaceholderArt =
+          !artRaw ||
+          /default_100\.png|empty\.png|\/artworks\/default/i.test(artRaw);
+
         return {
           order: index + 1,
           cueSeconds: parsedCue !== null && Number.isNaN(parsedCue) ? null : parsedCue,
           artist,
           title,
+          artworkUrl: isPlaceholderArt ? undefined : artRaw,
         };
       });
 

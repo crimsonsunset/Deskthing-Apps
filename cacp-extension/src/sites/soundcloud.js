@@ -368,6 +368,104 @@ export class SoundCloudHandler extends SiteHandler {
   }
 
   /**
+   * Reads the mix duration straight from the visible UI (ARIA progressbar or
+   * duration text), bypassing any captured audio/video element entirely.
+   * Used to sanity-check `audioEl`/`mseElement` before trusting them for a
+   * direct `currentTime` seek — SoundCloud can recreate/swap media elements
+   * mid-stream, leaving a captured reference pointing at a stale or
+   * short-duration element whose `.duration` no longer matches the mix.
+   * @returns {number} Displayed duration in seconds, or 0 if not determinable.
+   */
+  getDisplayedDuration() {
+    const progressContainer = document.querySelector(
+      '.playbackTimeline [role="progressbar"], .playbackTimeline__progressWrapper [role="progressbar"], .playControls [role="progressbar"]'
+    );
+    if (progressContainer) {
+      const max = parseFloat(progressContainer.getAttribute('aria-valuemax') || '');
+      if (!Number.isNaN(max) && max > 0) {
+        return Math.round(max);
+      }
+    }
+
+    const durationElement = this.getElement(this.constructor.config.selectors.durationElement);
+    if (durationElement && durationElement.textContent) {
+      const parsed = this.parseTimeString(durationElement.textContent.trim());
+      if (parsed > 0) {
+        return parsed;
+      }
+    }
+
+    return 0;
+  }
+
+  /**
+   * Whether a media element's reported duration roughly agrees with the
+   * UI-displayed duration (within 5%, or always true when the displayed
+   * duration can't be determined).
+   * @param {HTMLMediaElement} element
+   * @param {number} displayedDuration
+   * @returns {boolean}
+   */
+  isMediaElementDurationTrustworthy(element, displayedDuration) {
+    if (!displayedDuration || displayedDuration <= 0) {
+      return true;
+    }
+
+    const tolerance = Math.max(5, displayedDuration * 0.05);
+    return Math.abs(element.duration - displayedDuration) <= tolerance;
+  }
+
+  /**
+   * Logs a snapshot of all media timing sources for seek debugging.
+   * @param {string} label - Snapshot stage label (e.g. 'before', 'after').
+   * @param {number} requestedTime - Target seek time in seconds.
+   */
+  logSeekMediaSnapshot(label, requestedTime) {
+    const displayedDuration = this.getDisplayedDuration();
+    const timing = this.extractSoundCloudTiming();
+    const mediaElements = Array.from(document.querySelectorAll('audio, video')).map((element, index) => ({
+      index,
+      tag: element.tagName,
+      duration: element.duration,
+      currentTime: element.currentTime,
+      trustworthy: this.isMediaElementDurationTrustworthy(element, displayedDuration),
+      isAudioEl: element === this.audioEl,
+      isMseElement: element === this.mseElement,
+    }));
+
+    this.log.info(`[CACP-Seek] soundcloud snapshot ${label}`, {
+      requestedTime,
+      displayedDuration,
+      timing,
+      mediaElements,
+      audioElDuration: this.audioEl?.duration ?? null,
+      mseElementDuration: this.mseElement?.duration ?? null,
+    });
+  }
+
+  /**
+   * Schedules a post-seek position check to verify the page actually landed
+   * near the requested time.
+   * @param {number} requestedTime - Target seek time in seconds.
+   * @param {string} method - Seek method used (audioEl, mouse-sequence, etc.).
+   */
+  scheduleSeekPostCheck(requestedTime, method) {
+    setTimeout(() => {
+      const timing = this.extractSoundCloudTiming();
+      const actualPosition = timing.position;
+      this.log.info('[CACP-Seek] soundcloud post-seek check', {
+        requestedTime,
+        method,
+        actualPosition,
+        actualDuration: timing.duration,
+        deltaSeconds: actualPosition - requestedTime,
+        audioElCurrentTime: this.audioEl?.currentTime ?? null,
+        displayedDuration: this.getDisplayedDuration(),
+      });
+    }, 300);
+  }
+
+  /**
    * Get current playing state
    */
   getPlayingState() {
@@ -553,36 +651,105 @@ export class SoundCloudHandler extends SiteHandler {
    * Seek to specific time
    */
   async seek(time) {
-    this.log.info('[CACP-Seek] soundcloud seek start', { time, hasAudioEl: !!this.audioEl, hasMse: !!this.mseElement });
+    const displayedDuration = this.getDisplayedDuration();
+    this.logSeekMediaSnapshot('before', time);
+    this.log.info('[CACP-Seek] soundcloud seek start', {
+      time,
+      hasAudioEl: !!this.audioEl,
+      hasMse: !!this.mseElement,
+      displayedDuration,
+    });
 
     // Prefer the captured media element. mseElement can end up holding a raw
     // MediaSource instance (no currentTime support) if SoundCloud recreates one
     // mid-stream — guard against silently no-op'ing a seek on that object.
+    // Also cross-check against the UI-displayed duration: SoundCloud can swap
+    // in a new media element mid-stream, leaving `audioEl` pointing at a stale
+    // element whose `.duration` no longer matches the mix — a direct seek
+    // against that would silently clamp to the wrong (usually much shorter)
+    // duration instead of landing at the requested time.
     if (this.audioEl instanceof HTMLMediaElement && this.audioEl.duration > 0) {
-      this.audioEl.currentTime = time;
-      this.log.info('[CACP-Seek] soundcloud seek via audioEl', { time });
-      return { success: true, action: 'seek', time };
+      if (this.isMediaElementDurationTrustworthy(this.audioEl, displayedDuration)) {
+        this.audioEl.currentTime = time;
+        this.log.info('[CACP-Seek] soundcloud seek via audioEl', {
+          time,
+          audioElDuration: this.audioEl.duration,
+          displayedDuration,
+        });
+        this.scheduleSeekPostCheck(time, 'audioEl');
+        return { success: true, action: 'seek', time, method: 'audioEl' };
+      }
+
+      this.log.warn('[CACP-Seek] soundcloud audioEl rejected — duration mismatch', {
+        time,
+        audioElDuration: this.audioEl.duration,
+        displayedDuration,
+        delta: Math.abs(this.audioEl.duration - displayedDuration),
+      });
+    } else {
+      this.log.info('[CACP-Seek] soundcloud audioEl skipped', {
+        time,
+        hasAudioEl: this.audioEl instanceof HTMLMediaElement,
+        audioElDuration: this.audioEl?.duration ?? null,
+      });
     }
 
     if (this.mseElement instanceof HTMLMediaElement) {
-      this.mseElement.currentTime = time;
-      this.log.info('[CACP-Seek] soundcloud seek via mseElement', { time });
-      return { success: true, action: 'seek', time };
+      if (this.isMediaElementDurationTrustworthy(this.mseElement, displayedDuration)) {
+        this.mseElement.currentTime = time;
+        this.log.info('[CACP-Seek] soundcloud seek via mseElement', {
+          time,
+          mseElementDuration: this.mseElement.duration,
+          displayedDuration,
+        });
+        this.scheduleSeekPostCheck(time, 'mseElement');
+        return { success: true, action: 'seek', time, method: 'mseElement' };
+      }
+
+      this.log.warn('[CACP-Seek] soundcloud mseElement rejected — duration mismatch', {
+        time,
+        mseElementDuration: this.mseElement.duration,
+        displayedDuration,
+        delta: Math.abs(this.mseElement.duration - displayedDuration),
+      });
+    } else {
+      this.log.info('[CACP-Seek] soundcloud mseElement skipped', {
+        time,
+        hasMseElement: this.mseElement instanceof HTMLMediaElement,
+      });
     }
 
     // Try any media element
     const mediaElements = document.querySelectorAll('audio, video');
     for (const element of mediaElements) {
-      if (element.duration && element.duration > 0) {
-        element.currentTime = time;
-        this.log.info('[CACP-Seek] soundcloud seek via media element', { time, tag: element.tagName });
-        return { success: true, action: 'seek', time };
+      if (!element.duration || element.duration <= 0) {
+        continue;
       }
+
+      if (this.isMediaElementDurationTrustworthy(element, displayedDuration)) {
+        element.currentTime = time;
+        this.log.info('[CACP-Seek] soundcloud seek via media element', {
+          time,
+          tag: element.tagName,
+          elementDuration: element.duration,
+          displayedDuration,
+        });
+        this.scheduleSeekPostCheck(time, 'media-element');
+        return { success: true, action: 'seek', time, method: 'media-element' };
+      }
+
+      this.log.warn('[CACP-Seek] soundcloud media element rejected — duration mismatch', {
+        time,
+        tag: element.tagName,
+        elementDuration: element.duration,
+        displayedDuration,
+        delta: Math.abs(element.duration - displayedDuration),
+      });
     }
 
     // Calculate progress bar position and synthesize pointer events on wrapper
-    const duration = this.getDuration();
-    this.log.info('[CACP-Seek] soundcloud seek fallback to click', { time, duration });
+    const duration = displayedDuration || this.getDuration();
+    this.log.info('[CACP-Seek] soundcloud seek fallback to click', { time, duration, displayedDuration });
     if (duration > 0) {
       const percentage = time / duration;
       // Prefer the role=progressbar wrapper
@@ -624,6 +791,7 @@ export class SoundCloudHandler extends SiteHandler {
           clickableClass: clickable.className
         };
         this.log.info('[CACP-Seek] soundcloud seek click dispatched', diagnostics);
+        this.scheduleSeekPostCheck(time, 'mouse-sequence');
         return { success: true, action: 'seek', time, method: 'mouse-sequence', ...diagnostics };
       }
 

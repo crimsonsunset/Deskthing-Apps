@@ -659,7 +659,17 @@ class CACPMediaSource {
                             site: this.activeSiteName,
                             rawResult: result,
                             interpretedSuccess: seekSucceeded,
+                            method: result?.method ?? null,
                         });
+                        setTimeout(() => {
+                            const timing = this.currentHandler.getPosition?.()
+                                ?? this.currentHandler.extractSoundCloudTiming?.()
+                                ?? null;
+                            this.log.info('[CACP-Seek] content script post-report timing', {
+                                requestedTime: time,
+                                timing,
+                            });
+                        }, 150);
                     } else {
                         this.log.warn('[CACP-Seek] content script seek rejected', {
                             time,
