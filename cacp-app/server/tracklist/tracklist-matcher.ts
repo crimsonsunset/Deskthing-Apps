@@ -105,8 +105,14 @@ async function requestMatchFromOpenRouter(
     throw new Error('OpenRouter response did not include message content');
   }
 
+  console.log(`🧩 [CACP-Tracklist] OpenRouter raw response: ${content.slice(0, 500)}`);
+
   const parsedJson = JSON.parse(stripMarkdownFences(content)) as unknown;
-  return MatchResponseSchema.parse(parsedJson);
+  const match = MatchResponseSchema.parse(parsedJson);
+  console.log(
+    `🧩 [CACP-Tracklist] Matcher result — matchedUrl=${match.matchedUrl ?? 'null'} confidence=${match.confidence} reasoning="${match.reasoning}"`,
+  );
+  return match;
 }
 
 /**
@@ -119,7 +125,12 @@ export async function matchBestCandidate(
   query: string,
   candidates: SearchCandidate[],
 ): Promise<MatchResponse> {
+  console.log(
+    `🧩 [CACP-Tracklist] matchBestCandidate start — query="${query}" candidates=${candidates.length}`,
+  );
+
   if (candidates.length === 0) {
+    console.warn('🧩 [CACP-Tracklist] No candidates provided — skipping OpenRouter call');
     return MatchResponseSchema.parse({
       matchedUrl: null,
       confidence: 'low',
@@ -132,6 +143,7 @@ export async function matchBestCandidate(
     throw new Error('OPENROUTER_API_KEY is not configured in DeskThing settings');
   }
 
+  console.log(`🧩 [CACP-Tracklist] Calling OpenRouter (${MATCHER_MODEL})`);
   const prompt = buildMatchPrompt(query, candidates);
   return requestMatchFromOpenRouter(apiKey, prompt);
 }

@@ -59,6 +59,7 @@ function TracklistPanel({
   progressMs,
   onDevLookup,
   onLookupCurrent,
+  onSeekToTrack,
   currentArtist,
   currentTitle,
 }: {
@@ -68,6 +69,7 @@ function TracklistPanel({
   progressMs?: number | null;
   onDevLookup: () => void;
   onLookupCurrent?: () => void;
+  onSeekToTrack?: (cueSeconds: number) => void;
   currentArtist?: string | null;
   currentTitle?: string | null;
 }) {
@@ -116,17 +118,27 @@ function TracklistPanel({
           <ol className="cacp-tracklist-rows">
             {result.tracks.map((track) => {
               const isActive = currentTrack?.order === track.order;
+              const canSeek = onSeekToTrack && track.cueSeconds != null;
 
               return (
                 <li
                   key={`${track.order}-${track.cueSeconds}-${track.title}`}
                   className={isActive ? 'is-active' : undefined}
                 >
-                  <span className="cacp-tracklist-cue">{formatCueSeconds(track.cueSeconds)}</span>
-                  <span className="cacp-tracklist-track">
-                    {track.artist ? `${track.artist} — ` : ''}
-                    {track.title}
-                  </span>
+                  <button
+                    type="button"
+                    className="cacp-tracklist-row-button"
+                    disabled={!canSeek}
+                    onClick={() =>
+                      track.cueSeconds != null && onSeekToTrack?.(track.cueSeconds)
+                    }
+                  >
+                    <span className="cacp-tracklist-cue">{formatCueSeconds(track.cueSeconds)}</span>
+                    <span className="cacp-tracklist-track">
+                      {track.artist ? `${track.artist} — ` : ''}
+                      {track.title}
+                    </span>
+                  </button>
                 </li>
               );
             })}
@@ -162,6 +174,10 @@ export default function App() {
     lookupTracklist(song.artist, song.track_name);
   };
 
+  const handleSeekToTrack = (cueSeconds: number) => {
+    sendSeek(cueSeconds * 1000);
+  };
+
   const tracklistPanel = (
     <TracklistPanel
       status={status}
@@ -170,6 +186,7 @@ export default function App() {
       progressMs={song?.track_progress}
       onDevLookup={handleDevLookup}
       onLookupCurrent={song ? handleLookupCurrent : undefined}
+      onSeekToTrack={song ? handleSeekToTrack : undefined}
       currentArtist={song?.artist}
       currentTitle={song?.track_name}
     />

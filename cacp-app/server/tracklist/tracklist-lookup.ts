@@ -90,29 +90,41 @@ export async function lookupTracklist(
   title: string,
 ): Promise<TracklistResult | null> {
   const cacheKey = buildTracklistCacheKey(artist, title);
+  console.log(`🎧 [CACP-Tracklist] lookupTracklist start — artist="${artist}" title="${title}" cacheKey=${cacheKey}`);
+
   const cached = readTracklistCache(cacheKey);
   if (cached) {
+    console.log(`💾 [CACP-Tracklist] Cache hit for ${cacheKey} — ${cached.tracks.length} tracks, skipping network`);
     return cached;
   }
 
+  console.log(`💾 [CACP-Tracklist] Cache miss for ${cacheKey} — running full lookup`);
   const query = `${artist} ${title}`.trim();
   const browser = await connectToChrome();
 
   try {
     const candidates = await searchTracklists(browser, query);
     if (candidates.length === 0) {
+      console.warn(`🎧 [CACP-Tracklist] No search candidates for "${query}" — returning null (no attribution)`);
       return null;
     }
 
     const match = await matchBestCandidate(query, candidates);
     if (!match.matchedUrl) {
+      console.warn(`🎧 [CACP-Tracklist] Matcher returned null matchedUrl for "${query}" — returning null`);
       return null;
     }
 
     const result = await scrapeTracklist(browser, match.matchedUrl);
     writeTracklistCache(cacheKey, result);
+    console.log(`🎧 [CACP-Tracklist] lookupTracklist complete — wrote cache ${cacheKey} (${result.tracks.length} tracks)`);
     return result;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`🎧 [CACP-Tracklist] lookupTracklist failed for "${query}": ${message}`);
+    throw err;
   } finally {
     browser.disconnect();
+    console.log('🔌 [CACP-Tracklist] Chrome disconnected (attach-only, browser stays open)');
   }
 }

@@ -16,6 +16,7 @@ const DEFAULT_MAC_CHROME_PATH = join(
 export async function connectToChrome(
   devToolsActivePortPath = process.env.CHROME_DEVTOOLS_ACTIVE_PORT_PATH ?? DEFAULT_MAC_CHROME_PATH,
 ): Promise<Browser> {
+  console.log(`🔌 [CACP-Tracklist] Reading DevToolsActivePort from ${devToolsActivePortPath}`);
   const raw = await readFile(devToolsActivePortPath, 'utf8');
   const [port, wsPath] = raw
     .split('\n')
@@ -28,7 +29,9 @@ export async function connectToChrome(
     );
   }
 
-  return puppeteer.connect({
-    browserWSEndpoint: `ws://127.0.0.1:${port}${wsPath}`,
-  });
+  const browserWSEndpoint = `ws://127.0.0.1:${port}${wsPath}`;
+  console.log(`🔌 [CACP-Tracklist] Connecting to ${browserWSEndpoint}`);
+  const browser = await puppeteer.connect({ browserWSEndpoint });
+  console.log(`🔌 [CACP-Tracklist] Connected — browser version: ${await browser.version()}`);
+  return browser;
 }

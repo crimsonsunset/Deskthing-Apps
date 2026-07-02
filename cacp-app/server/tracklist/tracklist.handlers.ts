@@ -22,6 +22,9 @@ let lookupInFlightKey: string | null = null;
  * @param {TracklistClientPayload} payload - Current lookup status and result.
  */
 export function sendTracklistToClient(payload: TracklistClientPayload): void {
+  console.log(
+    `📤 [CACP-Tracklist] Sending to client — status=${payload.status} mixKey=${payload.mixKey ?? 'n/a'} tracks=${payload.result?.tracks.length ?? 0}${payload.error ? ` error="${payload.error}"` : ''}`,
+  );
   DeskThing.send({
     type: TRACKLIST_EVENT,
     request: 'result',
@@ -41,8 +44,10 @@ export async function runTracklistLookup(
   force = false,
 ): Promise<void> {
   const mixKey = buildTracklistCacheKey(artist, title);
+  console.log(`▶️ [CACP-Tracklist] runTracklistLookup — artist="${artist}" title="${title}" force=${force}`);
 
   if (!force && lookupInFlightKey === mixKey) {
+    console.log(`▶️ [CACP-Tracklist] Lookup already in flight for ${mixKey} — skipping duplicate`);
     return;
   }
 
@@ -80,6 +85,7 @@ export function maybeAutoLookupTracklist(
     return;
   }
 
+  console.log(`🔁 [CACP-Tracklist] Mix changed — auto-lookup triggered for ${mixKey}`);
   lastAutoLookupKey = mixKey;
   void runTracklistLookup(artist, title);
 }
