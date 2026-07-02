@@ -1,4 +1,4 @@
-import { saveRemoteImage } from '../imageUtils.js';
+import { isLocalDeskThingImageAvailable, saveRemoteImage } from '../imageUtils.js';
 import { tracklistLogger } from '../logger.helpers.js';
 import type { TracklistTrack } from './tracklist.types.js';
 
@@ -36,7 +36,7 @@ export async function processTracklistArtwork(
       continue;
     }
 
-    if (track.processedArtwork) {
+    if (track.processedArtwork && isLocalDeskThingImageAvailable(track.processedArtwork)) {
       processed.push(track);
       continue;
     }
@@ -74,6 +74,6 @@ export function tracklistNeedsArtworkBackfill(tracks: TracklistTrack[]): boolean
     (track) =>
       track.artworkUrl &&
       !isPlaceholderTrackArt(track.artworkUrl) &&
-      !track.processedArtwork,
+      !isLocalDeskThingImageAvailable(track.processedArtwork),
   );
 }

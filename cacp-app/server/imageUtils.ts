@@ -112,4 +112,44 @@ export function deleteImages() {
   }
 }
 
+/**
+ * Resolves a DeskThing public image URL to an on-disk file when it exists under IMAGES_DIRS.
+ * @param {string | null | undefined} publicPath - e.g. /resource/image/cacp/foo.jpg
+ * @returns {string | null} Absolute file path, or null when missing or not a local CACP path.
+ */
+export function resolveLocalImageFile(publicPath: string | null | undefined): string | null {
+  if (!publicPath?.startsWith(PUBLIC_BASE)) {
+    return null;
+  }
 
+  const fileName = publicPath.slice(PUBLIC_BASE.length);
+  if (!fileName) {
+    return null;
+  }
+
+  for (const dir of IMAGES_DIRS) {
+    const fullPath = join(dir, fileName);
+    if (existsSync(fullPath)) {
+      return fullPath;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Returns true when a thumbnail path is a cached local file DeskThing can serve.
+ * @param {string | null | undefined} thumbnail - Local /resource path or remote URL.
+ * @returns {boolean} Whether the file exists for a CACP /resource/image path.
+ */
+export function isLocalDeskThingImageAvailable(thumbnail: string | null | undefined): boolean {
+  if (!thumbnail) {
+    return false;
+  }
+
+  if (thumbnail.startsWith('http://') || thumbnail.startsWith('https://')) {
+    return false;
+  }
+
+  return resolveLocalImageFile(thumbnail) !== null;
+}

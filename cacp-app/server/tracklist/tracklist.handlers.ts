@@ -1,6 +1,7 @@
 import { DeskThing } from '@deskthing/server';
 import {
   buildTracklistCacheKey,
+  ensureTracklistArtworkBackfill,
   lookupTracklist,
   readTracklistCache,
 } from './tracklist-lookup.js';
@@ -184,6 +185,7 @@ export function maybeAutoLookupTracklist(
       mixKey,
       ...summarizeResult(cached),
     });
+    ensureTracklistArtworkBackfill(mixKey, cached);
     sendTracklistToClient({ status: 'ready', result: cached, mixKey });
     notifyTracklistReady();
     return;

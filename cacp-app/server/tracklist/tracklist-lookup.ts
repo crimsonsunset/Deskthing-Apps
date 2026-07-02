@@ -145,6 +145,19 @@ async function writeTracklistCache(cacheKey: string, result: TracklistResult): P
 }
 
 /**
+ * Downloads missing track artwork for a cached tracklist when JSON paths are stale or absent.
+ * @param {string} cacheKey - Mix cache slug.
+ * @param {TracklistResult} cached - Cached tracklist to backfill.
+ */
+export function ensureTracklistArtworkBackfill(cacheKey: string, cached: TracklistResult): void {
+  if (!tracklistNeedsArtworkBackfill(cached.tracks)) {
+    return;
+  }
+
+  scheduleArtworkBackfill(cacheKey, cached);
+}
+
+/**
  * Lazy-downloads missing processed artwork for a cached tracklist and rewrites cache.
  * @param {string} cacheKey - Mix cache slug.
  * @param {TracklistResult} cached - Cached tracklist to backfill.
@@ -195,7 +208,7 @@ export async function lookupTracklist(
       ...summarizeResult(cached),
     });
     if (tracklistNeedsArtworkBackfill(cached.tracks)) {
-      scheduleArtworkBackfill(cacheKey, cached);
+      ensureTracklistArtworkBackfill(cacheKey, cached);
     }
     return cached;
   }

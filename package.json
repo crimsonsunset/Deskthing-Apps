@@ -50,6 +50,9 @@
     "cacp-app",
     "cacp-extension"
   ],
+  "overrides": {
+    "esbuild": "^0.25.1"
+  },
   "keywords": [
     "deskthing",
     "chrome-extension",

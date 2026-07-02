@@ -1,24 +1,14 @@
 import JSGLogger, { type LoggerInstance } from '@crimsonsunset/jsg-logger';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { forceEnvironment } from '@crimsonsunset/jsg-logger/utils/environment';
+// Inlined at build time (not read from disk) so packaged/installed apps get the
+// same component log levels as local dev - the CLI's package step only copies
+// server/client/icons/manifest.json into dist, not arbitrary root-level files.
+import loggerConfig from '../logger-config.json' with { type: 'json' };
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
-/**
- * Loads logger-config.json and applies component levels for server-side logging.
- */
-function configureServerLogger(): void {
-  try {
-    const configPath = join(__dirname, '../logger-config.json');
-    const config = JSON.parse(readFileSync(configPath, 'utf8')) as Parameters<typeof JSGLogger.configure>[0];
-    JSGLogger.configure(config);
-  } catch {
-    // ponytail: fall back to library defaults when config is missing (e.g. partial deploy)
-  }
-}
-
-configureServerLogger();
+// DeskThing app workers are non-TTY; without this jsg-logger uses pino JSON and
+// mediastore/tracklist logs never show up in readable.log.
+forceEnvironment('cli');
+JSGLogger.configure(loggerConfig as Parameters<typeof JSGLogger.configure>[0]);
 
 const logger = JSGLogger.getInstanceSync();
 

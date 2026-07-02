@@ -9,7 +9,7 @@
     "dev:vite": "vite",
     "dev:wrapper": "npx @deskthing/cli dev",
     "dev": "node scripts/run-dev.script.js",
-    "build": "npx @deskthing/cli package",
+    "build": "node scripts/stage-package-assets.script.js && npx @deskthing/cli package",
     "setup": "node setup.js",
     "lint": "eslint .",
     "test": "node --loader tsm --test server/tracklist/tracklist-scraper.test.ts",

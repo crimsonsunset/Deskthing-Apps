@@ -1,3 +1,4 @@
+import { isLocalDeskThingImageAvailable } from '../imageUtils.js';
 import { findCurrentTracklistTrack } from '../../shared/tracklist-cue-matching.js';
 import type { TracklistTrack } from './tracklist.types.js';
 import { isPlaceholderTrackArt } from './tracklist-artwork.helpers.js';
@@ -35,7 +36,7 @@ export function buildInMixSongFields(
   let thumbnail: string | null = mixThumb;
   let thumbnailRemote: string | null = mixRemote;
 
-  if (current.processedArtwork) {
+  if (current.processedArtwork && isLocalDeskThingImageAvailable(current.processedArtwork)) {
     thumbnail = current.processedArtwork;
     thumbnailRemote = hasRemoteTrackArt ? (current.artworkUrl ?? mixRemote) : mixRemote;
   } else if (hasRemoteTrackArt && current.artworkUrl) {
