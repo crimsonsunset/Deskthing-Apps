@@ -467,33 +467,40 @@ function connectBridge() {
         }
         if (msg?.type !== 'media-command' || !msg?.action) return;
         const action = String(msg.action).toLowerCase();
+        let commandResult;
         switch (action) {
           case 'play':
-            await mediaManager.sendControlCommand('play');
+            commandResult = await mediaManager.sendControlCommand('play');
             break;
           case 'pause':
-            await mediaManager.sendControlCommand('pause');
+            commandResult = await mediaManager.sendControlCommand('pause');
             break;
           case 'previoustrack':
           case 'previous':
-            await mediaManager.sendControlCommand('previous');
+            commandResult = await mediaManager.sendControlCommand('previous');
             break;
           case 'nexttrack':
           case 'next':
-            await mediaManager.sendControlCommand('next');
+            commandResult = await mediaManager.sendControlCommand('next');
             break;
           case 'seek':
             if (typeof msg.time === 'number') {
               backgroundLogger.info('[CACP-Seek] bridge WS seek received', { time: msg.time, id: msg.id });
-              const seekResult = await mediaManager.sendControlCommand('seek', null, msg.time);
-              backgroundLogger.info('[CACP-Seek] bridge WS seek result', { time: msg.time, result: seekResult });
+              commandResult = await mediaManager.sendControlCommand('seek', null, msg.time);
+              backgroundLogger.info('[CACP-Seek] bridge WS seek result', { time: msg.time, result: commandResult });
             } else {
               backgroundLogger.warn('[CACP-Seek] bridge WS seek dropped — msg.time missing or not a number', { msg });
+              commandResult = { success: false, error: 'msg.time missing or not a number' };
             }
             break;
           default:
             backgroundLogger.debug('Unknown bridge command', { action });
+            return;
         }
+
+        // Relay the result back to the server so seek/transport failures are
+        // visible from the app server's log alone — no Chrome DevTools needed.
+        sendCommandResultToBridge(action, commandResult, msg.time);
       } catch (err) {
         backgroundLogger.warn('Failed to process bridge message', { error: err?.message });
       }
@@ -501,6 +508,36 @@ function connectBridge() {
   } catch (e) {
     backgroundLogger.error('Failed to create bridge socket', { error: e?.message });
     wsConnecting = false;
+  }
+}
+
+/**
+ * Relays a bridge-driven command's outcome back to the app server over the
+ * WS bridge, so server-side logs alone show whether play/pause/seek/etc.
+ * actually succeeded on the page (e.g. soundcloud.js's seek `method`/`time`),
+ * rather than only "the WS write to the extension succeeded".
+ * @param {string} action - The bridge command name (e.g. 'seek')
+ * @param {{success?: boolean, detail?: unknown, error?: string}} [result] - Result from sendControlCommand
+ * @param {number} [time] - The seek target time, when action === 'seek'
+ */
+function sendCommandResultToBridge(action, result, time) {
+  if (!wsConnected || !ws || ws.readyState !== WebSocket.OPEN) return;
+  const payload = {
+    type: 'command-result',
+    action,
+    success: !!result?.success,
+    detail: result?.detail,
+    error: result?.error,
+    time,
+    timestamp: Date.now()
+  };
+  if (action === 'seek') {
+    backgroundLogger.info('[CACP-Seek] relaying command-result to server', payload);
+  }
+  try {
+    ws.send(JSON.stringify(payload));
+  } catch (e) {
+    backgroundLogger.warn('Failed to relay command-result to bridge', { action, error: e?.message });
   }
 }
 

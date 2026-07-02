@@ -30,6 +30,9 @@ interface ExtensionMessage {
   success?: boolean;
   commandId?: string;
   timestamp?: number;
+  detail?: unknown;
+  error?: string;
+  time?: number;
 }
 
 /**
@@ -269,14 +272,18 @@ export class CACPMediaStore {
           }
           break;
           
-        case 'command-result':
+        case 'command-result': {
           const action = message.action || 'unknown';
           const success = message.success ? 'SUCCESS' : 'FAILED';
           console.log(`🎮 [CACP-MediaStore] Command result for ${action}: ${success}`);
+          if (action === 'seek') {
+            console.log(`[CACP-Seek] command-result received time=${message.time} success=${message.success} detail=${JSON.stringify(message.detail)} error=${message.error || 'none'}`);
+          }
           if (!message.success) {
-            sendDeskThingError(`❌ [CACP-MediaStore] Command ${action} failed on extension side`);
+            sendDeskThingError(`❌ [CACP-MediaStore] Command ${action} failed on extension side: ${message.error || JSON.stringify(message.detail) || 'unknown reason'}`);
           }
           break;
+        }
 
         case 'ping':
           this.sendPongToExtension(message.timestamp);

@@ -4,35 +4,57 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const IMAGES_DIR = join(__dirname, '../deskthing/images');
 const PUBLIC_BASE = '/resource/image/cacp/';
 
-function ensureImagesDir() {
-  if (!existsSync(IMAGES_DIR)) {
-    console.log('Creating images directory for CACP');
-    mkdirSync(IMAGES_DIR, { recursive: true });
+/**
+ * Two serving conventions exist for /resource/image/cacp/*:
+ * - `@deskthing/cli` dev emulator's DevClient serves from `cwd()/deskthing/images`
+ * - The packaged Desktop install (matches soundcloud-app/ultimateclock prod convention) serves from `__dirname/../images`
+ * Neither environment exposes a reliable env var to branch on, so artwork is written to both.
+ */
+const IMAGES_DIRS = [
+  join(__dirname, '../deskthing/images'),
+  join(__dirname, '../images'),
+];
+
+function ensureImagesDirs() {
+  for (const dir of IMAGES_DIRS) {
+    if (!existsSync(dir)) {
+      console.log(`Creating images directory for CACP: ${dir}`);
+      mkdirSync(dir, { recursive: true });
+    }
   }
 }
 
-export async function saveBinaryImage(binary: Buffer, fileNameNoExt: string, ext = 'png'): Promise<string> {
-  ensureImagesDir();
-  const filePath = join(IMAGES_DIR, `${fileNameNoExt}.${ext}`);
-  await new Promise<void>((resolve, reject) => {
+function writeFileAsync(filePath: string, binary: Buffer): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
     writeFile(filePath, binary, (err) => {
       if (err) {
-        sendDeskThingError(`Failed to save image: ${err.message}`);
         reject(err);
         return;
       }
       resolve();
     });
   });
+}
+
+export async function saveBinaryImage(binary: Buffer, fileNameNoExt: string, ext = 'png'): Promise<string> {
+  ensureImagesDirs();
+  try {
+    await Promise.all(
+      IMAGES_DIRS.map((dir) => writeFileAsync(join(dir, `${fileNameNoExt}.${ext}`), binary)),
+    );
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    sendDeskThingError(`Failed to save image: ${message}`);
+    throw err;
+  }
   return `${PUBLIC_BASE}${fileNameNoExt}.${ext}`;
 }
 
 export async function saveRemoteImage(url: string, fileNameHint: string): Promise<string | undefined> {
   try {
-    ensureImagesDir();
+    ensureImagesDirs();
     const res = await fetch(url);
     if (!res.ok) {
       sendDeskThingWarning(`Image fetch failed: ${url} (${res.status})`);
@@ -52,13 +74,15 @@ export async function saveRemoteImage(url: string, fileNameHint: string): Promis
 }
 
 export function deleteImages() {
-  ensureImagesDir();
-  const files = readdirSync(IMAGES_DIR);
-  for (const file of files) {
-    try {
-      unlinkSync(join(IMAGES_DIR, file));
-    } catch {
-      // file may already be gone
+  ensureImagesDirs();
+  for (const dir of IMAGES_DIRS) {
+    const files = readdirSync(dir);
+    for (const file of files) {
+      try {
+        unlinkSync(join(dir, file));
+      } catch {
+        // file may already be gone
+      }
     }
   }
 }

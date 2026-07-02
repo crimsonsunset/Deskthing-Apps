@@ -553,10 +553,18 @@ export class SoundCloudHandler extends SiteHandler {
    * Seek to specific time
    */
   async seek(time) {
-    this.log.info('[CACP-Seek] soundcloud seek start', { time, hasMse: !!this.mseElement });
-    
-    // Try MSE element first
-    if (this.mseElement) {
+    this.log.info('[CACP-Seek] soundcloud seek start', { time, hasAudioEl: !!this.audioEl, hasMse: !!this.mseElement });
+
+    // Prefer the captured media element. mseElement can end up holding a raw
+    // MediaSource instance (no currentTime support) if SoundCloud recreates one
+    // mid-stream — guard against silently no-op'ing a seek on that object.
+    if (this.audioEl instanceof HTMLMediaElement && this.audioEl.duration > 0) {
+      this.audioEl.currentTime = time;
+      this.log.info('[CACP-Seek] soundcloud seek via audioEl', { time });
+      return { success: true, action: 'seek', time };
+    }
+
+    if (this.mseElement instanceof HTMLMediaElement) {
       this.mseElement.currentTime = time;
       this.log.info('[CACP-Seek] soundcloud seek via mseElement', { time });
       return { success: true, action: 'seek', time };
@@ -601,9 +609,28 @@ export class SoundCloudHandler extends SiteHandler {
         fire('mouseup');
         fire('click');
 
-        this.log.info('[CACP-Seek] soundcloud seek click dispatched', { percentage: Math.round(percentage * 100), clickX, rectLeft: rect.left, rectWidth: rect.width });
-        return { success: true, action: 'seek', time, method: 'mouse-sequence' };
+        // Diagnostic detail forwarded all the way back to the server/popup —
+        // if rectWidth is ~0 every click lands at rect.left regardless of
+        // percentage, which would explain a seek that always lands near 0.
+        const diagnostics = {
+          percentage: Math.round(percentage * 100),
+          clickX,
+          clickY,
+          rectLeft: rect.left,
+          rectTop: rect.top,
+          rectWidth: rect.width,
+          rectHeight: rect.height,
+          usedWrapper: !!wrapper,
+          clickableClass: clickable.className
+        };
+        this.log.info('[CACP-Seek] soundcloud seek click dispatched', diagnostics);
+        return { success: true, action: 'seek', time, method: 'mouse-sequence', ...diagnostics };
       }
+
+      this.log.warn('[CACP-Seek] soundcloud seek click — no clickable progress element found', {
+        hasWrapper: !!wrapper,
+        hasProgressBar: !!progressBar
+      });
     }
 
     this.log.warn('[CACP-Seek] soundcloud seek failed — no method available', { time, duration });
@@ -810,7 +837,7 @@ export class SoundCloudHandler extends SiteHandler {
     }
 
     // Try to get position from discovered MSE element (matches original)
-    if (this.mseElement) {
+    if (this.mseElement instanceof HTMLMediaElement) {
       const position = this.mseElement.currentTime || 0;
       const duration = this.mseElement.duration || 0;
       
@@ -898,8 +925,10 @@ export class SoundCloudHandler extends SiteHandler {
           sourceBuffers: instance.sourceBuffers.length
         });
 
-        // Store reference for later use
-        self.mseElement = instance;
+        // Note: do NOT store `instance` on self.mseElement — MediaSource has no
+        // `currentTime` (only HTMLMediaElement does). seek() would silently no-op
+        // if this got assigned here. The real element is captured separately via
+        // hookMediaElementSrcObject() once srcObject is set on the <audio>/<video> tag.
 
         // Listen for source opening (streaming starts)
         instance.addEventListener('sourceopen', () => {

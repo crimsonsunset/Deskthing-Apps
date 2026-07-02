@@ -680,10 +680,17 @@ class CACPMediaSource {
             // Force immediate state report after control
             setTimeout(() => this.reportMediaState(), 100);
 
+            const success = result && typeof result === 'object' && 'success' in result
+                ? !!result.success
+                : !!result;
+
             return {
-                success: !!result,
+                success,
                 action: command,
-                site: this.activeSiteName
+                site: this.activeSiteName,
+                // Forward the raw handler result (e.g. soundcloud.js's seek `method`/`time`)
+                // so background.js can relay it to the server for server-side-only debugging.
+                detail: result && typeof result === 'object' ? result : undefined
             };
 
         } catch (error) {

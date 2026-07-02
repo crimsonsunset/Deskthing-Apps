@@ -425,8 +425,13 @@ class CACPPopup {
         command: 'seek',
         time: seconds
       });
+      console.log('[CACP-Seek] popup sendGlobalSeek response', response);
       if (response?.success) {
-        this.log('Seek to ' + formatTime(seconds) + ' sent successfully');
+        const d = response.detail;
+        const detailSummary = d
+          ? ' (method=' + d.method + ', rectWidth=' + d.rectWidth + ', clickX=' + Math.round(d.clickX || 0) + ')'
+          : '';
+        this.log('Seek to ' + formatTime(seconds) + ' sent successfully' + detailSummary);
         setTimeout(() => this.refreshGlobalState(), 150);
       } else {
         this.log('Seek failed: ' + (response?.error || 'unknown'), 'error');

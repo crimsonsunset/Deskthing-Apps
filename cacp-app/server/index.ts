@@ -42,6 +42,9 @@ type ExtensionMessage = {
   success?: boolean;
   commandId?: string;
   timestamp?: number;
+  detail?: unknown;
+  error?: string;
+  time?: number;
 };
 
 const startWsServer = async () => {
