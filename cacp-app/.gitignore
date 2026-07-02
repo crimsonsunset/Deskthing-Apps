@@ -1,0 +1,5 @@
+*.tsbuildinfo
+images/
+deskthing/images/
+server/tracklists/
+server/deskthing/tracklists/
