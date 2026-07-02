@@ -79,7 +79,7 @@ class CACPMediaSource {
         this.tabId = null;
 
         // Configuration
-        this.reportIntervalMs = 2000; // Report every 2 seconds
+        this.reportIntervalMs = 1000; // Report every second
         this.maxRetries = 3;
 
         this.log.debug('CACP Media Source created', {

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   AUDIO_REQUESTS,
   SongAbilities,
@@ -44,6 +45,7 @@ const getProgressPercent = (
 export default function App() {
   const { song, isPlaying, sendTransport, togglePlayPause, hasAbility, sendSeek } =
     useCacpMusic();
+  const [hoverRatio, setHoverRatio] = useState<number | null>(null);
 
   if (!song) {
     return (
@@ -65,6 +67,17 @@ export default function App() {
   );
 
   /**
+   * Compute the 0-1 ratio of a pointer position along the progress bar's width.
+   * @param {React.MouseEvent<HTMLDivElement>} event
+   */
+  const getRatioFromEvent = (
+    event: React.MouseEvent<HTMLDivElement>,
+  ): number => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+  };
+
+  /**
    * Compute the target position from a progress bar click and send a seek request.
    * @param {React.MouseEvent<HTMLDivElement>} event
    */
@@ -77,16 +90,26 @@ export default function App() {
       return;
     }
 
-    const rect = event.currentTarget.getBoundingClientRect();
-    const ratio = Math.max(
-      0,
-      Math.min(1, (event.clientX - rect.left) / rect.width),
-    );
+    const ratio = getRatioFromEvent(event);
     const targetMs = Math.round(durationMs * ratio);
     console.log(
       `[CACP-Seek] App progress click ratio=${ratio.toFixed(3)} targetMs=${targetMs} durationMs=${durationMs}`,
     );
     sendSeek(targetMs);
+  };
+
+  /**
+   * Track the pointer's position over the progress bar to preview the seek target.
+   * @param {React.MouseEvent<HTMLDivElement>} event
+   */
+  const handleProgressBarHover = (
+    event: React.MouseEvent<HTMLDivElement>,
+  ) => {
+    if (song.track_duration == null || song.track_duration <= 0) {
+      return;
+    }
+
+    setHoverRatio(getRatioFromEvent(event));
   };
 
   return (
@@ -119,13 +142,33 @@ export default function App() {
 
       <section className="cacp-progress">
         <div
-          className="cacp-progress-bar cacp-progress-bar-interactive"
-          onClick={handleProgressBarClick}
+          className="cacp-progress-bar-wrapper"
+          onMouseMove={handleProgressBarHover}
+          onMouseLeave={() => setHoverRatio(null)}
         >
+          {hoverRatio != null && (
+            <div
+              className="cacp-progress-hover-tooltip"
+              style={{ left: `${hoverRatio * 100}%` }}
+            >
+              {formatMs((song.track_duration ?? 0) * hoverRatio)}
+            </div>
+          )}
           <div
-            className="cacp-progress-fill"
-            style={{ width: `${progressPercent}%` }}
-          />
+            className="cacp-progress-bar cacp-progress-bar-interactive"
+            onClick={handleProgressBarClick}
+          >
+            <div
+              className="cacp-progress-fill"
+              style={{ width: `${progressPercent}%` }}
+            />
+            {hoverRatio != null && (
+              <div
+                className="cacp-progress-hover-marker"
+                style={{ left: `${hoverRatio * 100}%` }}
+              />
+            )}
+          </div>
         </div>
         <div className="cacp-progress-times">
           <span>{formatMs(song.track_progress)}</span>

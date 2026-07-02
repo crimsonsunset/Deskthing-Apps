@@ -25,6 +25,10 @@ let pingIntervalId = null;
 const MAX_RECONNECT_DELAY_MS = 30000;
 const PING_INTERVAL_MS = 30000;
 const DEFAULT_WS_URL = 'ws://127.0.0.1:8081';
+// ponytail: SW cold-start (extension load/reload) can race the app's WS bridge
+// binding :8081, causing one native ERR_CONNECTION_REFUSED before the backoff
+// retry succeeds. This delay just lowers the odds; it can't eliminate the race.
+const INITIAL_CONNECT_DELAY_MS = 1000;
 
 // Initialize logger
 const backgroundLogger = logger.getComponent('background');
@@ -573,8 +577,9 @@ function pushPriorityToBridge(priority) {
   } catch {}
 }
 
-// Establish bridge connection at startup
-connectBridge();
+// Establish bridge connection at startup, after a brief delay (see
+// INITIAL_CONNECT_DELAY_MS above)
+setTimeout(connectBridge, INITIAL_CONNECT_DELAY_MS);
 
 // On fresh SW startup, notify any existing tabs so their content scripts
 // can re-register. The in-memory flag ensures we only broadcast once per
