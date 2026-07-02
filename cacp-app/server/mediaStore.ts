@@ -229,6 +229,7 @@ export class CACPMediaStore {
 
     if (sent) {
       this.extensionData.position = seconds;
+      this.extensionData.pendingSeek = { targetSeconds: seconds, requestedAt: Date.now() };
       this.extensionData.lastUpdate = Date.now();
       this.lastSentPayload = null;
       this.sendExtensionDataToDeskThing();

@@ -3,6 +3,19 @@ import { sendDeskThingError, sendDeskThingWarning } from './deskthing-log.helper
 import { mediastoreLogger } from './logger.helpers.js';
 
 /**
+ * How long after a seek to keep suppressing extension position reports that
+ * haven't caught up yet — the click+arrow-key seek settle time observed in
+ * practice is well under this.
+ */
+const SEEK_SETTLE_GRACE_MS = 2500;
+
+/**
+ * How far behind the seek target a reported position can be and still count
+ * as "settled" — matches the fine-tune tolerance plus a small buffer.
+ */
+const SEEK_BACKWARD_TOLERANCE_SECONDS = 1.5;
+
+/**
  * Chrome extension media payload nested under a WS message.
  */
 export interface ExtensionMediaData {
@@ -51,6 +64,8 @@ export type ExtensionDataState = {
   site?: string;
   sourceId?: string | number;
   lastUpdate?: number;
+  /** Set by handleSeek; suppresses stale backward timeupdate reports until the seek settles. */
+  pendingSeek?: { targetSeconds: number; requestedAt: number } | null;
 };
 
 /**
@@ -210,6 +225,26 @@ export async function handleExtensionWsMessage(
         break;
 
       case 'timeupdate': {
+        if (ctx.extensionData.pendingSeek) {
+          const { targetSeconds, requestedAt } = ctx.extensionData.pendingSeek;
+          const elapsedMs = Date.now() - requestedAt;
+          const reportedPosition = message.currentTime;
+          const hasReachedTarget =
+            reportedPosition != null &&
+            reportedPosition >= targetSeconds - SEEK_BACKWARD_TOLERANCE_SECONDS;
+
+          if (hasReachedTarget || elapsedMs > SEEK_SETTLE_GRACE_MS) {
+            ctx.extensionData.pendingSeek = null;
+          } else {
+            mediastoreLogger.debug('[CACP-Seek] suppressing stale timeupdate during seek settle', {
+              reportedPosition,
+              targetSeconds,
+              elapsedMs,
+            });
+            break;
+          }
+        }
+
         const timeChanged =
           message.currentTime !== ctx.extensionData.position ||
           message.duration !== ctx.extensionData.duration ||
