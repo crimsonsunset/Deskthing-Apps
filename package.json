@@ -15,20 +15,26 @@
   "type": "module",
   "main": "scripts/dist/index.js",
   "scripts": {
-    "build": "npm run build:compile && npm run start",
+    "build": "npm run build:compile && npm run release",
     "build:compile": "tsc",
-    "start": "node scripts/dist/index.js",
+    "start": "node scripts/dev/start.js",
+    "release": "node scripts/dist/index.js",
     "build:soundcloud": "cd soundcloud-app && npm run build",
     "build:cacp": "cd cacp-app && npm run build",
     "dev:soundcloud": "cd soundcloud-app && npm run dev",
     "dev:cacp": "cd cacp-app && npm run dev",
+    "start:dev": "node scripts/dev/start.js",
+    "start:emulator": "node scripts/dev/start.js --mode=emulator",
+    "start:desktop": "node scripts/dev/start.js --mode=desktop",
+    "kill": "node scripts/dev/kill.js",
     "debug-music": "node scripts/music-debug.js",
     "player:control": "node scripts/player-control.js",
     "kill-port": "node scripts/kill-port-8080.js",
     "clean": "rm -rf */dist */node_modules",
-    "install:all": "npm install && cd soundcloud-app && npm install && cd ../cacp-app && npm install"
+    "install:all": "npm install && cd soundcloud-app && npm install && cd ../cacp-app && npm install && cd ../cacp-extension && npm install"
   },
   "devDependencies": {
+    "@inquirer/prompts": "^7.5.3",
     "@deskthing/cli": "^0.11.4",
     "@deskthing/types": "^0.11.9",
     "@types/node": "^22.13.10",
@@ -42,7 +48,8 @@
   },
   "workspaces": [
     "soundcloud-app",
-    "cacp-app"
+    "cacp-app",
+    "cacp-extension"
   ],
   "keywords": [
     "deskthing",

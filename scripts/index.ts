@@ -17,7 +17,8 @@ const MAINTAINED_APPS = [
   "weather",
   "weatherwaves",
   "soundcloud",
-  "gamething"
+  "gamething",
+  "cacp",
 ];
 
 const COMMUNITY_REPOS: GitRepoUrl[] = [

@@ -1,212 +1,104 @@
 # Next Session Planning - CACP Development
 
-*Last Updated: July 28, 2025*
+*Last Updated: June 30, 2026*
 
-## 🎯 **CURRENT STATUS: CACP Extension Complete - Testing Phase**
+## Current Status
 
-### **✅ MAJOR PROGRESS: CACP Extension Fully Implemented (Last Session)**
-- **CACP extension is 90%+ complete** - sophisticated multi-site architecture implemented
-- **Content script** (455 lines): Global media source reporting with site detection  
-- **Background script** (324 lines): Complete GlobalMediaManager with tab coordination
-- **Site handlers**: Full SoundCloud (892 lines) + YouTube (477 lines) implementations
-- **Base architecture**: Config-driven handler system with override capabilities
-- **Support systems**: WebSocket manager, priority manager, structured logging, popup UI
-
-### **🎯 CURRENT PRIORITY: Extension-to-SoundCloud Communication**
-**Focus**: Get CACP extension working with SoundCloud site **before** touching DeskThing app
-- Extension → SoundCloud site interaction (play/pause/next/prev)
-- Popup interface showing SoundCloud detection and control
-- Validate against working SoundCloud app server (port 8081)
-
-### **🔄 IMPLEMENTATION STATUS**
-
-**✅ COMPLETE (Last Session):**
-- CACP Chrome extension architecture and implementation
-- Multi-site handler system with base class + overrides
-- SoundCloud and YouTube site handlers 
-- Global media manager for cross-tab coordination
-- WebSocket communication layer
-- Structured logging system with Pino
-- Extension popup and settings UI
-- Chrome manifest with multi-site permissions
-
-**🎯 CURRENT FOCUS:**
-- [ ] **DEBUG**: Extension popup showing SoundCloud detection
-- [ ] **TEST**: SoundCloud site control commands (play/pause/next/prev)
-- [ ] **VALIDATE**: Extension communication with SoundCloud app server
-- [ ] **FIX**: Any extension-to-site interaction issues
-
-**🔜 NEXT PHASE (After Extension Works):**
-- [ ] Migrate working SoundCloud app server to universal CACP app
-- [ ] Multi-site server message routing
-- [ ] Test YouTube handler integration
+**Branch:** `feature/chrome-audio-control-platform`  
+**Dev entry point:** `npm start` (or `start:emulator` / `start:desktop`)  
+**Extension dev server:** port `5150`  
+**DeskThing dev shell:** port `3050` (iframes Vite on `5050`) — not a Car Thing UI
 
 ---
 
-## 🚨 **PREVIOUS CONSOLE ERRORS (May Be Resolved)**
+### What Works
 
-### **Extension Loading Issues (Check if still occurring):**
-```
-cacp.js:4 {time: 1753749008251, level: 'error', msg: 'CACP Media Source initialization failed'}
-Uncaught runtime.lastError: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
-```
+- Extension WS ping/pong keepalive — server replies `{ type: 'pong' }`; unknown extension types log to console only (no DeskThing warning spam)
+- Popup shows active media sources, track info, artwork, progress bar, play/pause/next/prev controls
+- Controls (play/pause/next/prev/seek) work from extension popup → `:8081` → server → tab
+- `@deskthing/cli` dev shell at `:3050` is iframe + server worker only (no transport UI in shell)
+- `App.tsx` now-playing + transport UI via `@deskthing/client` (`DEVICE_CLIENT.MUSIC`, `SongEvent.SET`)
+- SW restart re-registration — content scripts re-register after Chrome's 30s SW termination
+- WebSocket bridge from extension → DeskThing app (`ws://127.0.0.1:8081`) with reconnect/backoff
+- `isActive` = track metadata present (title populated) → controls always enabled when track is loaded
+- Title sanitization strips SoundCloud's `"Current track: "` a11y prefix and dedupes doubled strings
+- `bindMediaEvents` bound on audio element capture for immediate play/pause/ended state
+- Logger configured in SW via async fetch of `logger-config.json` at startup
 
-### **Ad-Blocker Interference (Still Relevant):**
-- **30+ blocked requests** for SoundCloud internal scripts
-- May affect MediaSession API and extension functionality
-- Test in clean browser profile if issues persist
+### Progress Log
 
----
+### June 30, 2026 — Now-playing UI (Phases 1–4)
+- `use-cacp-music.hook.ts` + `App.tsx` now-playing shell + transport controls shipped
+- `:3050` / `:5050` show live track when extension bridge active; empty state when not
+- `npm run build` packages `cacp-v0.1.6.zip` with new client UI
 
-## 📋 **CURRENT SESSION GOALS**
+### Remaining Tasks
 
-### **🎯 PRIMARY (Extension-to-Site Communication):**
-- [ ] **LOAD**: Test CACP extension in Chrome Developer Mode
-- [ ] **NAVIGATE**: Go to SoundCloud and check popup shows detection
-- [ ] **CONTROL**: Test play/pause/next/prev commands from popup
-- [ ] **DEBUG**: Any site interaction failures or console errors
-- [ ] **VALIDATE**: Extension properly detects and controls SoundCloud
-
-### **🔧 SECONDARY (If Primary Works):**
-- [ ] **CONNECT**: Test extension WebSocket connection to SoundCloud app (port 8081)
-- [ ] **VERIFY**: Media state reporting to DeskThing app
-- [ ] **CONFIRM**: Full end-to-end control flow working
-
-## 🔄 **TESTING WORKFLOW**
-
-### **Phase 1: Extension-to-Site (Current)**
-1. **Load CACP extension** in Chrome Developer Mode
-2. **Navigate to SoundCloud** 
-3. **Open extension popup** - should show SoundCloud detected
-4. **Test basic controls** - play, pause, next, previous from popup
-5. **Check console** for any errors or warnings
-
-### **Phase 2: Extension-to-App (If Phase 1 Works)**
-1. **Start SoundCloud app server** (`npm run dev:soundcloud`)
-2. **Test WebSocket connection** from extension
-3. **Verify media data flow** - track info, playback state
-4. **Test DeskThing control commands** end-to-end
-
-## 📝 **ARCHITECTURE NOTES**
-
-### **CACP Extension Structure (Implemented):**
-```
-cacp-extension/src/
-├── cacp.js                 # Content script orchestrator (455 lines)
-├── background.js           # Global media manager (324 lines)  
-├── sites/
-│   ├── base-handler.js     # Config-driven base class (442 lines)
-│   ├── soundcloud.js       # Full SC implementation (892 lines)
-│   └── youtube.js          # Full YT implementation (477 lines)
-├── managers/
-│   ├── site-detector.js    # URL pattern matching (311 lines)
-│   ├── priority-manager.js # User priority ranking (321 lines)
-│   └── websocket-manager.js # DeskThing communication (545 lines)
-└── logger.js               # Structured logging (250 lines)
-```
-
-### **Next Phase: CACP App Server (Not Started)**
-```
-cacp-app/server/
-├── index.ts               # Empty - needs implementation
-├── mediaStore.ts          # Empty - needs implementation  
-└── siteManager.ts         # Empty - needs implementation
-```
-
-## 🚧 **BLOCKERS & DEPENDENCIES**
-
-**Current Blocker**: Unknown if extension-to-SoundCloud site communication works
-**Dependency**: Must validate extension works before building universal app server
-**Environment**: Test with/without ad-blockers if issues arise
+- [x] Build `App.tsx` with `@deskthing/client` — `DEVICE_CLIENT.MUSIC` now-playing + transport buttons for emulator dev
+- [ ] Verify YouTube handler works end-to-end (same `isReady()` fix applied but untested)
+- [ ] Clean up excessive `console.log` debug statements in `cacp.js` (logger exposure block ~lines 798–905)
+- [ ] Investigate `fileOverrides: 0`, `components: 1` in SW logger init log — SW logger init fires before async config load completes
+- [ ] Test SW keepalive cadence (25s ping to `chrome.runtime.getPlatformInfo`) under real 30s idle termination
+- [ ] Multi-tab priority: confirm two SoundCloud tabs show correct priority switching
+- [ ] YouTube: implement `bindMediaEvents` equivalent if native video element approach differs
 
 ---
 
-**Evolution Path**: Extension Working → App Migration → Universal Platform  
-**Current Focus**: Extension validation and site control before DeskThing integration 
+## Dev Setup
 
----
+```bash
+# Recommended — from repo root
+npm run install:all      # first time
+npm run start:emulator     # cacp-app + extension (new tab)
 
-## Session Findings — 2025-08-08 01:17:23 MDT
+# Manual fallback (two terminals)
+cd cacp-app && npm run dev
+cd cacp-extension && npm run dev
 
-- **What was broken**
-  - Media element is inside sandboxed iframes on the feed → no `audio/video` in main doc; MediaSession often empty at start → timing 0/0.
-  - Loading unpacked from `src/*` caused bare-import and module errors; popup logs collapsed; handler state checked wrong property.
+# Chrome DevTools proxy (for SW logs)
+cd jsg-tech-check/tools/chrome-proxy && bash start-proxy.sh
+```
 
-- **What we changed**
-  - Load built `dist/`, mark SW as module; patch-bump each build and log version in content/popup.
-  - Fix handler state (`currentHandler`), add `getSitePriority`, open popup by default with heartbeat logs, add art + progress.
-  - SoundCloud handler: add mini-player selectors; implement ARIA-first timeline (now/max) with fallbacks; scrub forces immediate update; detailed trace logs.
+See [docs/cacp/local-development.md](./cacp/local-development.md) for emulator vs desktop modes, port map, and troubleshooting.
 
-- **What works now**
-  - ARIA path active on feed: progress and scrubs reflect immediately; MediaSession metadata/artwork populate mid-play; controls work.
-  - Popup timeline click-to-seek for priority source and per-source progress bars; seeks dispatch mouse sequence onto SoundCloud `.playbackTimeline__progressWrapper[role="progressbar"]`.
+## Architecture Notes
 
-- **Remaining**
-  - Clean duplicated DOM titles (strip "Current track:" and repeats).
-  - Relax `hasControls` check; strengthen popup reconnect after SW restarts.
-  - Apply the same click-to-seek approach to YouTube when that handler is validated.
+### Logger (`@crimsonsunset/jsg-logger` v1.8.9)
 
----
+- **API:** `logger.getComponent('component-name')` — NOT `logger.componentName`
+- **Config:** `logger.configure(config)` with `cacp-extension/logger-config.json`
+- **Content scripts:** sync XHR to load config (no top-level await in content scripts)
+- **Background SW:** async IIFE fetch at startup (top-level await disallowed in SW modules)
+- **Runtime controls:** `window.CACP_Logger` (exposed by `main-world-logger.js`)
 
-## YouTube (watch) Implementation Plan — Scoped (No YouTube Music)
+### `isActive` Semantics
 
-1) Scope
-- Support only `www.youtube.com` watch pages (exclude Shorts `/shorts/` and Live `/live/` for v1). No YouTube Music.
+`isActive = !!(trackInfo?.title && title !== 'Unknown Track' && title !== 'Unknown Title') || isPlaying`
 
-2) Handler skeleton
-- Create `src/sites/youtube.js` mirroring SoundCloud public API: `initialize`, `isReady`, `getTrackInfo`, `getCurrentTime`, `getDuration`, `isPlaying/getPlayingState`, `play/pause/next/previous`, `seek`, `extractTiming`.
+Track metadata present → controls enabled even when paused. Set in both `getCurrentMediaState()` and initial `registerWithBackground()`.
 
-3) Controls mapping
-- Play/Pause: `.ytp-play-button` (toggle) → fallback keyboard `'k'`.
-- Next/Prev: `.ytp-next-button` / `.ytp-prev-button` (if present).
+### Port Map
 
-4) Timing extraction (priority order)
-- Media element: `document.querySelector('video')` → `currentTime/duration` if `duration>0`.
-- ARIA slider: `.ytp-progress-bar [role="slider"]` → `aria-valuenow/aria-valuemax`.
-- Ratio fallback: `.ytp-play-progress` width / `.ytp-progress-bar` width.
-- Text fallback: `.ytp-time-current`, `.ytp-time-duration`.
+| Service | Port |
+|---|---|
+| cacp-extension Vite (CRXJS HMR) | 5150 |
+| cacp-app Vite | 5050 |
+| DeskThing dev shell | 3050 |
+| cacp-app Vite (app UI) | 5050 |
+| Extension↔App WS bridge | 8081 |
 
-5) Click-to-seek
-- Primary: set `video.currentTime = target`.
-- Fallback mouse sequence on `.ytp-progress-bar`: dispatch `mousemove/mousedown/mouseup/click` at `rect.left + rect.width * (time/duration)`.
+### SW Restart Flow
 
-6) Readiness and metadata
-- isReady if controls exist, MediaSession metadata exists, or video present.
-- Track info from MediaSession; fallback to `h1.title` and channel link.
-
-7) Edge cases
-- Ads: skip timing during `player.classList.contains('ad-interrupting')` or ad overlays.
-- Live: `duration === 0` → disable seek.
-- SPA: re-detect on URL change (already wired).
-
-8) QA
-- Validate play/pause/next/prev, progress, click-to-seek on standard watch pages and playlist items; mini/theater modes.
+1. SW module reloads → broadcasts `sw-restarted` to all tabs
+2. Content scripts receive → reset `isRegistered = false` → call `registerWithBackground()`
+3. Background `updateSource` upserts if `tabId` unknown (handles lost in-memory state)
 
 ---
 
 ## CACP → DeskThing Hardware Integration (Checklist)
 
-1) Universal App Server (CACP app)
-- Build `cacp-app/server/` with a single WS endpoint, in-memory media store, routing by `site`.
-- Outbound schema (reuse SoundCloud): `{ type: 'mediaData', site, data: { title, artist, album, artwork, isPlaying, currentTime, duration } }`.
-- Inbound commands: `{ type: 'control', command: 'play'|'pause'|'next'|'previous'|'seek', site?, seconds? }`.
-
-2) Extension ↔ App bridge (background)
-- WS client with reconnect/backoff and heartbeat.
-- Publish currentPriority + source diffs on change and at interval; receive commands and forward to target tab.
-
-3) Protocol alignment
-- Match existing SoundCloud app shapes so DeskThing UI needs no changes.
-- Add version/feature flags; gate seek availability when `duration===0` (ads/live).
-
-4) Config & discovery
-- Options page for host/port/TLS and enabled sites (SoundCloud, YouTube only).
-- Store in `chrome.storage.sync`; graceful defaults, connection status in logs.
-
-5) Reliability & lifecycle
-- Confirm SW keepalive cadence is sufficient; add watchdog logs.
-- Remove stale sources on tab close or WS disconnect; last-will clear.
-
-6) Packaging & deploy
-- Repeatable `npm run build` for extension (dist); `npm start` for app server with env (`PORT`, `TLS`).
-- One-page setup guide; device smoke test: SC + YT controls, progress, seek, reconnect.
+1. **App server** — `cacp-app/server/` WS endpoint, in-memory media store, routing by `site`
+2. **Protocol** — reuse SoundCloud shapes: `{ type: 'mediaData', site, data: { title, artist, album, artwork, isPlaying } }` + `{ type: 'timeupdate', currentTime, duration }`
+3. **Inbound commands** — `{ type: 'media-command', action: 'play'|'pause'|'next'|'previous'|'seek' }`
+4. **Config page** — options page for WS host/port, stored in `chrome.storage.sync`
+5. **YouTube validation** — run same test suite as SoundCloud once handler verified

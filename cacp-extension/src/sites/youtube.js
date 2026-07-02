@@ -39,7 +39,7 @@ export class YouTubeHandler extends SiteHandler {
 
   constructor() {
     super();
-    this.log = logger.youtube;
+    this.log = logger.getComponent('youtube');
     this.isYouTubeMusic = window.location.hostname.includes('music.youtube.com');
     this.currentVideoElement = null;
     
@@ -376,12 +376,13 @@ export class YouTubeHandler extends SiteHandler {
    * Seek to specific time
    */
   async seek(time) {
-    this.log.info(`Seeking to ${time}s`, { isYouTubeMusic: this.isYouTubeMusic, time });
+    this.log.info('[CACP-Seek] youtube seek start', { time, isYouTubeMusic: this.isYouTubeMusic });
     
     // Try video element first
     const videoElement = this.currentVideoElement || this.getElement(this.constructor.config.selectors.videoElement);
     if (videoElement) {
       videoElement.currentTime = time;
+      this.log.info('[CACP-Seek] youtube seek via videoElement', { time });
       return { success: true, action: 'seek', time };
     }
 
@@ -396,9 +397,11 @@ export class YouTubeHandler extends SiteHandler {
       const clickY = rect.top + (rect.height / 2);
       
       this.clickAtPosition(progressBar, clickX, clickY);
+      this.log.info('[CACP-Seek] youtube seek via progress click', { time, percentage });
       return { success: true, action: 'seek', time, method: 'click' };
     }
 
+    this.log.warn('[CACP-Seek] youtube seek failed — no method available', { time, duration });
     return { success: false, error: 'No seek method available' };
   }
 

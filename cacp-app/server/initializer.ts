@@ -1,6 +1,8 @@
 import { DeskThing } from "@deskthing/server";
-import { AUDIO_REQUESTS, MusicEventPayloads, SongEvent } from "@deskthing/types";
+import { AUDIO_REQUESTS, SongEvent } from "@deskthing/types";
 import { CACPMediaStore } from "./mediaStore";
+import { sendDeskThingWarning } from "./deskthing-log.helpers.js";
+import { registerTracklistHandlers } from "./tracklist/tracklist.handlers.js";
 
 /**
  * Initialize DeskThing event listeners for CACP
@@ -9,9 +11,8 @@ import { CACPMediaStore } from "./mediaStore";
 export const initializeListeners = async () => {
   console.log('🎛️ [CACP-Initializer] Setting up DeskThing event listeners for CACP');
   
-  const mediaStore = CACPMediaStore.getInstance();
-  
-  // Initialize MediaStore (no specific initialization needed for CACP)
+  CACPMediaStore.getInstance();
+  registerTracklistHandlers();
   console.log('✅ [CACP-Initializer] MediaStore instance ready');
 };
 
@@ -32,7 +33,7 @@ DeskThing.on(SongEvent.GET, (data) => {
       mediaStore.handleRefresh();
       break;
     default:
-      DeskThing.sendWarning(`⚠️ [CACP-Initializer] Unknown GET request: ${data.request}`);
+      sendDeskThingWarning(`⚠️ [CACP-Initializer] Unknown GET request: ${data.request}`);
   }
 });
 
@@ -45,12 +46,12 @@ DeskThing.on(SongEvent.SET, (data) => {
   
   switch (data.request) {
     case AUDIO_REQUESTS.FAST_FORWARD:
-      console.log(`📡 [CACP-Initializer] Processing FAST_FORWARD: ${data.payload}ms`);
+      console.log(`[CACP-Seek] initializer SET FAST_FORWARD payload=${data.payload} typeof=${typeof data.payload} (routed as absolute seek ms)`);
       mediaStore.handleSeek({ positionMs: data.payload }); // Use seek for fast forward
       break;
     case AUDIO_REQUESTS.LIKE:
       console.log('📡 [CACP-Initializer] Processing LIKE (not supported)');
-      DeskThing.sendWarning('❤️ [CACP] Liking songs is not supported for browser audio');
+      sendDeskThingWarning('❤️ [CACP] Liking songs is not supported for browser audio');
       break;
     case AUDIO_REQUESTS.NEXT:
       console.log('📡 [CACP-Initializer] Processing NEXT track');
@@ -73,11 +74,11 @@ DeskThing.on(SongEvent.SET, (data) => {
       mediaStore.handleRepeat();
       break;
     case AUDIO_REQUESTS.REWIND:
-      console.log(`📡 [CACP-Initializer] Processing REWIND: ${data.payload}ms`);
+      console.log(`[CACP-Seek] initializer SET REWIND payload=${data.payload} typeof=${typeof data.payload} (routed as absolute seek ms)`);
       mediaStore.handleSeek({ positionMs: data.payload }); // Use seek for rewind
       break;
     case AUDIO_REQUESTS.SEEK:
-      console.log(`📡 [CACP-Initializer] Processing SEEK: ${data.payload}ms`);
+      console.log(`[CACP-Seek] initializer SET SEEK payload=${data.payload} typeof=${typeof data.payload}`);
       mediaStore.handleSeek({ positionMs: data.payload });
       break;
     case AUDIO_REQUESTS.SHUFFLE:
@@ -93,6 +94,6 @@ DeskThing.on(SongEvent.SET, (data) => {
       mediaStore.handleVolume({ volume: data.payload });
       break;
     default:
-      DeskThing.sendWarning(`⚠️ [CACP-Initializer] Unknown SET request: ${data.request}`);
+      sendDeskThingWarning(`⚠️ [CACP-Initializer] Unknown SET request: ${data.request}`);
   }
 });

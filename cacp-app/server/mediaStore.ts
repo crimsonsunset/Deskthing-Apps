@@ -2,6 +2,16 @@ import { DeskThing } from "@deskthing/server";
 import { SongAbilities, SongData } from "@deskthing/types";
 import type { WebSocket } from 'ws';
 import { saveRemoteImage } from "./imageUtils";
+import { sendDeskThingError, sendDeskThingWarning } from "./deskthing-log.helpers.js";
+import { maybeAutoLookupTracklist } from "./tracklist/tracklist.handlers.js";
+import {
+  buildTracklistCacheKey,
+  readTracklistCache,
+} from "./tracklist/tracklist-lookup.js";
+import {
+  buildInMixSongFields,
+  findCurrentTracklistTrack,
+} from "./tracklist/tracklist-current-track.helpers.js";
 
 /**
  * Chrome Extension Message Types
@@ -16,7 +26,7 @@ interface ExtensionMediaData {
 }
 
 interface ExtensionMessage {
-  type: 'mediaData' | 'timeupdate' | 'connection' | 'command-result';
+  type: 'mediaData' | 'timeupdate' | 'connection' | 'command-result' | 'ping';
   site?: string;
   sourceId?: string | number;
   data?: ExtensionMediaData;
@@ -28,6 +38,10 @@ interface ExtensionMessage {
   action?: string;
   success?: boolean;
   commandId?: string;
+  timestamp?: number;
+  detail?: unknown;
+  error?: string;
+  time?: number;
 }
 
 /**
@@ -80,7 +94,7 @@ export class CACPMediaStore {
     });
 
     ws.on('error', (error) => {
-      DeskThing.sendError(`❌ [CACP-MediaStore] WebSocket error: ${error.message}`);
+      sendDeskThingError(`❌ [CACP-MediaStore] WebSocket error: ${error.message}`);
     });
   }
 
@@ -90,7 +104,7 @@ export class CACPMediaStore {
    */
   private sendCommandToExtension(action: string, payload: any = {}) {
     if (!this.extensionWebSocket) {
-      DeskThing.sendWarning(`⚠️ [CACP-MediaStore] No extension WebSocket connection available for command: ${action}`);
+      sendDeskThingWarning(`⚠️ [CACP-MediaStore] No extension WebSocket connection available for command: ${action}`);
       return false;
     }
 
@@ -103,6 +117,9 @@ export class CACPMediaStore {
     };
 
     // Enhanced logging for all commands
+    if (action === 'seek') {
+      console.log(`[CACP-Seek] mediaStore WS outbound action=seek time=${payload.time} hasSocket=${!!this.extensionWebSocket}`);
+    }
     console.log(`🎮 [CACP-MediaStore] Sending command to extension: ${action}`);
     console.log(`📋 [CACP-MediaStore] Command payload:`, JSON.stringify(command, null, 2));
     
@@ -111,7 +128,7 @@ export class CACPMediaStore {
       console.log(`✅ [CACP-MediaStore] Command sent successfully: ${action}`);
       return true;
     } catch (error: any) {
-      DeskThing.sendError(`❌ [CACP-MediaStore] Failed to send command ${action}: ${error?.message || error}`);
+      sendDeskThingError(`❌ [CACP-MediaStore] Failed to send command ${action}: ${error?.message || error}`);
       return false;
     }
   }
@@ -139,11 +156,11 @@ export class CACPMediaStore {
         console.log(`✅ [CACP-MediaStore] Artwork processed successfully: ${processedPath}`);
         return processedPath;
       } else {
-        DeskThing.sendWarning(`⚠️ [CACP-MediaStore] Failed to process artwork: ${artworkUrl}`);
+        sendDeskThingWarning(`⚠️ [CACP-MediaStore] Failed to process artwork: ${artworkUrl}`);
         return undefined;
       }
     } catch (error: any) {
-      DeskThing.sendError(`❌ [CACP-MediaStore] Artwork processing error: ${error?.message || error}`);
+      sendDeskThingError(`❌ [CACP-MediaStore] Artwork processing error: ${error?.message || error}`);
       return undefined;
     }
   }
@@ -212,7 +229,7 @@ export class CACPMediaStore {
                     }
                   })
                   .catch(error => {
-                    DeskThing.sendError(`❌ [CACP-MediaStore] Artwork processing failed: ${error?.message || error}`);
+                    sendDeskThingError(`❌ [CACP-MediaStore] Artwork processing failed: ${error?.message || error}`);
                   });
               }
 
@@ -264,22 +281,88 @@ export class CACPMediaStore {
           }
           break;
           
-        case 'command-result':
+        case 'command-result': {
           const action = message.action || 'unknown';
           const success = message.success ? 'SUCCESS' : 'FAILED';
           console.log(`🎮 [CACP-MediaStore] Command result for ${action}: ${success}`);
-          if (!message.success) {
-            DeskThing.sendError(`❌ [CACP-MediaStore] Command ${action} failed on extension side`);
+          if (action === 'seek') {
+            console.log('[CACP-Seek] mediaStore command-result', {
+              requestedTimeSeconds: message.time,
+              success: message.success,
+              detail: message.detail ?? null,
+              error: message.error || null,
+              cachedPositionSeconds: this.extensionData.position ?? 0,
+              cachedDurationSeconds: this.extensionData.duration ?? 0,
+            });
           }
+          if (!message.success) {
+            sendDeskThingError(`❌ [CACP-MediaStore] Command ${action} failed on extension side: ${message.error || JSON.stringify(message.detail) || 'unknown reason'}`);
+          }
+          break;
+        }
+
+        case 'ping':
+          this.sendPongToExtension(message.timestamp);
           break;
           
         default:
-          DeskThing.sendWarning(`⚠️ [CACP-MediaStore] Unknown extension message type: ${messageType}`);
+          console.log(`📋 [CACP-MediaStore] Unknown extension message type: ${messageType}`);
       }
       
     } catch (error: any) {
-      DeskThing.sendError(`❌ [CACP-MediaStore] Error processing extension message: ${error?.message || error}`);
+      sendDeskThingError(`❌ [CACP-MediaStore] Error processing extension message: ${error?.message || error}`);
       console.error('Full error:', error);
+    }
+  }
+
+  /**
+   * Replies to extension WS keepalive ping per docs/cacp/api-reference.md.
+   * @param {number} [pingTimestamp] - Timestamp from the ping payload, if present
+   */
+  private sendPongToExtension(pingTimestamp?: number): void {
+    if (!this.extensionWebSocket) {
+      console.log('📋 [CACP-MediaStore] Ping received but no extension WebSocket to reply on');
+      return;
+    }
+
+    const payload = {
+      type: 'pong',
+      timestamp: pingTimestamp ?? Date.now(),
+    };
+
+    try {
+      this.extensionWebSocket.send(JSON.stringify(payload));
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.log(`📋 [CACP-MediaStore] Failed to send pong: ${message}`);
+    }
+  }
+
+  /**
+   * Pushes enriched display metadata to the extension popup via the WS bridge.
+   * @param {object} display - Format A fields for popup rendering.
+   */
+  private sendDisplayMetadataToExtension(display: {
+    title: string;
+    artist: string | null;
+    thumbnail: string | null;
+    mixTitle: string;
+    mixArtist: string;
+    inMixOrder?: number;
+  }) {
+    if (!this.extensionWebSocket) {
+      return;
+    }
+
+    try {
+      this.extensionWebSocket.send(JSON.stringify({
+        type: 'displayMetadata',
+        ...display,
+        timestamp: Date.now(),
+      }));
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      sendDeskThingWarning(`⚠️ [CACP-MediaStore] Failed to send displayMetadata: ${message}`);
     }
   }
 
@@ -288,42 +371,69 @@ export class CACPMediaStore {
    * Enhanced with comprehensive logging and data validation from SoundCloud app
    */
   private sendExtensionDataToDeskThing() {
-    if (!this.extensionData.title && !this.extensionData.artist) {
+    const rawTitle = this.extensionData.title || '';
+    const rawArtist = this.extensionData.artist || '';
+
+    if (!rawTitle && !rawArtist) {
       console.log('📋 [CACP-MediaStore] No meaningful data to send (missing title and artist)');
       return;
     }
 
     try {
+      const mixThumbnail = this.extensionData.processedArtwork || this.extensionData.artwork || null;
+      const progressMs = this.extensionData.position
+        ? Math.round(this.extensionData.position * 1000)
+        : null;
+
+      let trackName = rawTitle || 'Unknown Track';
+      let artistLine: string | null = rawArtist || null;
+      let thumbnail: string | null = mixThumbnail;
+      let thumbnailRemote: string | null = mixThumbnail?.startsWith('http') ? mixThumbnail : null;
+      let inMixOrder: number | undefined;
+
+      const cacheKey = buildTracklistCacheKey(rawArtist, rawTitle);
+      const cached = readTracklistCache(cacheKey);
+      if (cached?.tracks.length) {
+        const current = findCurrentTracklistTrack(cached.tracks, progressMs);
+        if (current) {
+          const enriched = buildInMixSongFields(current, rawTitle, rawArtist, mixThumbnail);
+          trackName = enriched.track_name;
+          artistLine = enriched.artist;
+          thumbnail = enriched.thumbnail;
+          thumbnailRemote = enriched.thumbnailRemote;
+          inMixOrder = enriched.inMixOrder;
+        }
+      }
+
       const musicPayload: SongData = {
         version: 2,
         album: this.extensionData.album || null,
-        artist: this.extensionData.artist || null,
+        artist: artistLine,
         playlist: null,
         playlist_id: null,
-        track_name: this.extensionData.title || 'Unknown Track',
+        track_name: trackName,
         shuffle_state: null,
         repeat_state: "off",
         is_playing: this.extensionData.isPlaying || false,
         abilities: [
-          SongAbilities.NEXT, 
-          SongAbilities.PREVIOUS, 
-          SongAbilities.PLAY, 
+          SongAbilities.NEXT,
+          SongAbilities.PREVIOUS,
+          SongAbilities.PLAY,
           SongAbilities.PAUSE
         ],
         track_duration: this.extensionData.duration ? Math.round(this.extensionData.duration * 1000) : null,
-        track_progress: this.extensionData.position ? Math.round(this.extensionData.position * 1000) : null,
+        track_progress: progressMs,
         volume: 0,
-        thumbnail: this.extensionData.processedArtwork || this.extensionData.artwork || null, // Prefer processed artwork
+        thumbnail,
         device: `CACP Extension (${this.extensionData.site || 'unknown'})`,
         id: this.extensionData.sourceId?.toString() || null,
         device_id: 'cacp-extension',
         source: this.extensionData.site || 'cacp-extension'
       };
 
-      // Avoid sending duplicate payloads
-      const payloadKey = `${musicPayload.track_name}-${musicPayload.artist}-${musicPayload.is_playing}-${musicPayload.track_progress}`;
-      const lastKey = this.lastSentPayload ? 
-        `${this.lastSentPayload.track_name}-${this.lastSentPayload.artist}-${this.lastSentPayload.is_playing}-${this.lastSentPayload.track_progress}` : 
+      const payloadKey = `${musicPayload.track_name}-${musicPayload.artist}-${musicPayload.is_playing}-${musicPayload.track_progress}-${musicPayload.thumbnail ?? ''}`;
+      const lastKey = this.lastSentPayload ?
+        `${this.lastSentPayload.track_name}-${this.lastSentPayload.artist}-${this.lastSentPayload.is_playing}-${this.lastSentPayload.track_progress}-${this.lastSentPayload.thumbnail ?? ''}` :
         null;
 
       if (payloadKey !== lastKey) {
@@ -331,16 +441,24 @@ export class CACPMediaStore {
         if (musicPayload.thumbnail) {
           console.log(`🖼️ [CACP-MediaStore] Including artwork: ${musicPayload.thumbnail}`);
         }
-        
+
         DeskThing.sendSong(musicPayload);
         this.lastSentPayload = musicPayload;
+        maybeAutoLookupTracklist(rawArtist, rawTitle);
+        this.sendDisplayMetadataToExtension({
+          title: trackName,
+          artist: artistLine,
+          thumbnail: thumbnailRemote,
+          mixTitle: rawTitle,
+          mixArtist: rawArtist,
+          inMixOrder,
+        });
       } else {
-        // Quiet log for duplicate data
         console.log('📋 [CACP-MediaStore] Skipping duplicate payload');
       }
 
     } catch (error: any) {
-      DeskThing.sendError(`❌ [CACP-MediaStore] Failed to send data to DeskThing: ${error?.message || error}`);
+      sendDeskThingError(`❌ [CACP-MediaStore] Failed to send data to DeskThing: ${error?.message || error}`);
     }
   }
 
@@ -366,19 +484,39 @@ export class CACPMediaStore {
   }
 
   public handleSeek(data: { positionMs: number }) {
-    const seconds = Math.round(data.positionMs / 1000);
-    console.log(`⏩ [CACP-MediaStore] Seek requested to ${seconds}s (from ${data.positionMs}ms)`);
-    
-    if (this.extensionData.duration) {
-      const percentage = (seconds / this.extensionData.duration) * 100;
-      console.log(`⏩ [CACP-MediaStore] Seeking to ${percentage.toFixed(1)}% of ${this.extensionData.duration}s track`);
+    if (data.positionMs == null || Number.isNaN(data.positionMs)) {
+      console.warn(`[CACP-Seek] mediaStore handleSeek rejected — invalid positionMs: ${data.positionMs}`);
+      return;
     }
-    
-    this.sendCommandToExtension('seek', { time: seconds });
+
+    const seconds = Math.round(data.positionMs / 1000);
+    const cachedPosition = this.extensionData.position ?? 0;
+    const cachedDuration = this.extensionData.duration ?? 0;
+
+    console.log('[CACP-Seek] mediaStore handleSeek', {
+      positionMs: data.positionMs,
+      timeSeconds: seconds,
+      cachedPositionSeconds: cachedPosition,
+      cachedDurationSeconds: cachedDuration,
+      cachedPlaying: this.extensionData.isPlaying,
+      pctOfCachedDuration:
+        cachedDuration > 0 ? `${((seconds / cachedDuration) * 100).toFixed(1)}%` : null,
+      exceedsCachedDuration: cachedDuration > 0 ? seconds > cachedDuration : null,
+    });
+
+    if (cachedDuration) {
+      const percentage = (seconds / cachedDuration) * 100;
+      console.log(`[CACP-Seek] mediaStore seek target ${percentage.toFixed(1)}% of known duration ${cachedDuration}s`);
+    } else {
+      console.log('[CACP-Seek] mediaStore seek — no extension duration cached yet');
+    }
+
+    const sent = this.sendCommandToExtension('seek', { time: seconds });
+    console.log(`[CACP-Seek] mediaStore WS seek command sent=${sent}`);
   }
 
   public handleVolume(data: { volume: number }) {
-    DeskThing.sendWarning('🔊 [CACP-MediaStore] Volume control not supported for browser audio');
+    sendDeskThingWarning('🔊 [CACP-MediaStore] Volume control not supported for browser audio');
   }
 
   public handleShuffle(data: { shuffle: boolean }) {
@@ -387,7 +525,7 @@ export class CACPMediaStore {
   }
 
   public handleRepeat() {
-    DeskThing.sendWarning('🔁 [CACP-MediaStore] Repeat control not yet implemented');
+    sendDeskThingWarning('🔁 [CACP-MediaStore] Repeat control not yet implemented');
   }
 
   public handleGetSong() {
@@ -397,6 +535,15 @@ export class CACPMediaStore {
 
   public handleRefresh() {
     console.log('🔄 [CACP-MediaStore] REFRESH request - sending current data');
+    this.sendExtensionDataToDeskThing();
+  }
+
+  /**
+   * Re-sends song state after a tracklist lookup completes (clears dedupe cache).
+   */
+  public handleTracklistReady() {
+    console.log('🎧 [CACP-MediaStore] Tracklist ready — forcing display refresh');
+    this.lastSentPayload = null;
     this.sendExtensionDataToDeskThing();
   }
 

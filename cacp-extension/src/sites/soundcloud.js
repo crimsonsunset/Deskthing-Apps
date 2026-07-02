@@ -27,7 +27,7 @@ export class SoundCloudHandler extends SiteHandler {
     super();
     
     // Initialize logger
-    this.log = logger.soundcloud;
+    this.log = logger.getComponent('soundcloud');
     
     // State initialization
     this.isStreamingActive = false;
@@ -114,27 +114,21 @@ export class SoundCloudHandler extends SiteHandler {
    * Check if SoundCloud player is ready
    */
   isReady() {
-    this.log.debug('Checking if SoundCloud handler is ready...');
+    this.log.trace('Checking if SoundCloud handler is ready...');
     
-    // Check if we have player controls or MediaSession
-    const hasControls = !!this.getElement(this.constructor.config.selectors.playerContainer);
+    // Use document.querySelector directly — getElement() expects a config key, not a CSS string
+    const hasControls = !!document.querySelector(this.constructor.config.selectors.playerContainer);
     const mediaSessionObj = (navigator.mediaSession && navigator.mediaSession.metadata) ? navigator.mediaSession.metadata : null;
     const hasMediaSession = !!mediaSessionObj;
     const hasMediaEl = !!(this.audioEl && this.audioEl.duration > 0);
     const isReady = !!hasControls || hasMediaSession || this.isStreamingActive || hasMediaEl;
     
-    this.log.debug('Ready check results', {
+    this.log.trace('Ready check results', {
       hasControls,
       hasMediaSession,
-      mediaSessionMetadata: mediaSessionObj ? {
-        title: mediaSessionObj?.title,
-        artist: mediaSessionObj?.artist
-      } : null,
       isStreamingActive: this.isStreamingActive,
-      finalResult: isReady,
-      playerContainerSelector: this.constructor.config.selectors.playerContainer,
-      playerContainerFound: !!document.querySelector(this.constructor.config.selectors.playerContainer),
-      hasMediaEl
+      hasMediaEl,
+      finalResult: isReady
     });
     
     return isReady;
@@ -237,6 +231,7 @@ export class SoundCloudHandler extends SiteHandler {
    */
   getTrackInfo() {
     this.log.trace('Extracting track information');
+    // ponytail: internal poll path — keep all sub-logs at trace to avoid 2s flood
     
     const info = {
       title: 'Unknown Track',
@@ -250,7 +245,7 @@ export class SoundCloudHandler extends SiteHandler {
     // Try MediaSession first (most reliable)
     if (navigator.mediaSession && navigator.mediaSession.metadata) {
       const metadata = navigator.mediaSession.metadata;
-      info.title = metadata.title || info.title;
+      info.title = this.sanitizeTitle(metadata.title) || info.title;
       info.artist = metadata.artist || info.artist;
       info.album = metadata.album || info.album;
       info.artwork = metadata.artwork || [];
@@ -258,7 +253,7 @@ export class SoundCloudHandler extends SiteHandler {
       // Get playing state from MediaSession
       info.isPlaying = navigator.mediaSession.playbackState === 'playing';
       
-      this.log.debug('MediaSession data extracted', {
+      this.log.trace('MediaSession data extracted', {
         hasMetadata: !!metadata,
         title: info.title,
         artist: info.artist,
@@ -267,12 +262,12 @@ export class SoundCloudHandler extends SiteHandler {
         playbackState: navigator.mediaSession.playbackState
       });
     } else {
-      this.log.debug('MediaSession not available or missing metadata');
+      this.log.trace('MediaSession not available or missing metadata');
     }
 
     // Enhance with DOM elements if MediaSession is incomplete
     if (info.title === 'Unknown Track') {
-      this.log.debug('Falling back to DOM for title extraction');
+      this.log.trace('Falling back to DOM for title extraction');
       
       // Try to get title from DOM
       const titleElements = [
@@ -285,8 +280,8 @@ export class SoundCloudHandler extends SiteHandler {
       for (const selector of titleElements) {
         const element = document.querySelector(selector);
         if (element && element.textContent.trim()) {
-          info.title = element.textContent.trim();
-          this.log.debug('Title extracted from DOM', { 
+          info.title = this.sanitizeTitle(element.textContent.trim());
+          this.log.trace('Title extracted from DOM', { 
             selector, 
             title: info.title 
           });
@@ -295,12 +290,12 @@ export class SoundCloudHandler extends SiteHandler {
       }
       
       if (info.title === 'Unknown Track') {
-        this.log.warn('Could not extract title from any DOM selectors');
+        this.log.trace('Could not extract title from any DOM selectors');
       }
     }
 
     if (info.artist === 'Unknown Artist') {
-      this.log.debug('Falling back to DOM for artist extraction');
+      this.log.trace('Falling back to DOM for artist extraction');
       
       // Try to get artist from DOM
       const artistElements = [
@@ -313,7 +308,7 @@ export class SoundCloudHandler extends SiteHandler {
         const element = document.querySelector(selector);
         if (element && element.textContent.trim()) {
           info.artist = element.textContent.trim();
-          this.log.debug('Artist extracted from DOM', { 
+          this.log.trace('Artist extracted from DOM', { 
             selector, 
             artist: info.artist 
           });
@@ -322,7 +317,7 @@ export class SoundCloudHandler extends SiteHandler {
       }
       
       if (info.artist === 'Unknown Artist') {
-        this.log.warn('Could not extract artist from any DOM selectors');
+        this.log.trace('Could not extract artist from any DOM selectors');
       }
     }
 
@@ -345,7 +340,7 @@ export class SoundCloudHandler extends SiteHandler {
 
     this.currentTrack = info;
     
-            this.log.debug('Track info extraction complete', {
+            this.log.trace('Track info extraction complete', {
       finalTrackInfo: info,
       extractionMethods: {
         mediaSessionUsed: !!(navigator.mediaSession && navigator.mediaSession.metadata),
@@ -370,6 +365,104 @@ export class SoundCloudHandler extends SiteHandler {
   getDuration() {
     const timing = this.extractSoundCloudTiming();
     return timing.duration || 0;
+  }
+
+  /**
+   * Reads the mix duration straight from the visible UI (ARIA progressbar or
+   * duration text), bypassing any captured audio/video element entirely.
+   * Used to sanity-check `audioEl`/`mseElement` before trusting them for a
+   * direct `currentTime` seek — SoundCloud can recreate/swap media elements
+   * mid-stream, leaving a captured reference pointing at a stale or
+   * short-duration element whose `.duration` no longer matches the mix.
+   * @returns {number} Displayed duration in seconds, or 0 if not determinable.
+   */
+  getDisplayedDuration() {
+    const progressContainer = document.querySelector(
+      '.playbackTimeline [role="progressbar"], .playbackTimeline__progressWrapper [role="progressbar"], .playControls [role="progressbar"]'
+    );
+    if (progressContainer) {
+      const max = parseFloat(progressContainer.getAttribute('aria-valuemax') || '');
+      if (!Number.isNaN(max) && max > 0) {
+        return Math.round(max);
+      }
+    }
+
+    const durationElement = this.getElement(this.constructor.config.selectors.durationElement);
+    if (durationElement && durationElement.textContent) {
+      const parsed = this.parseTimeString(durationElement.textContent.trim());
+      if (parsed > 0) {
+        return parsed;
+      }
+    }
+
+    return 0;
+  }
+
+  /**
+   * Whether a media element's reported duration roughly agrees with the
+   * UI-displayed duration (within 5%, or always true when the displayed
+   * duration can't be determined).
+   * @param {HTMLMediaElement} element
+   * @param {number} displayedDuration
+   * @returns {boolean}
+   */
+  isMediaElementDurationTrustworthy(element, displayedDuration) {
+    if (!displayedDuration || displayedDuration <= 0) {
+      return true;
+    }
+
+    const tolerance = Math.max(5, displayedDuration * 0.05);
+    return Math.abs(element.duration - displayedDuration) <= tolerance;
+  }
+
+  /**
+   * Logs a snapshot of all media timing sources for seek debugging.
+   * @param {string} label - Snapshot stage label (e.g. 'before', 'after').
+   * @param {number} requestedTime - Target seek time in seconds.
+   */
+  logSeekMediaSnapshot(label, requestedTime) {
+    const displayedDuration = this.getDisplayedDuration();
+    const timing = this.extractSoundCloudTiming();
+    const mediaElements = Array.from(document.querySelectorAll('audio, video')).map((element, index) => ({
+      index,
+      tag: element.tagName,
+      duration: element.duration,
+      currentTime: element.currentTime,
+      trustworthy: this.isMediaElementDurationTrustworthy(element, displayedDuration),
+      isAudioEl: element === this.audioEl,
+      isMseElement: element === this.mseElement,
+    }));
+
+    this.log.info(`[CACP-Seek] soundcloud snapshot ${label}`, {
+      requestedTime,
+      displayedDuration,
+      timing,
+      mediaElements,
+      audioElDuration: this.audioEl?.duration ?? null,
+      mseElementDuration: this.mseElement?.duration ?? null,
+    });
+  }
+
+  /**
+   * Schedules a post-seek position check to verify the page actually landed
+   * near the requested time.
+   * @param {number} requestedTime - Target seek time in seconds.
+   * @param {string} method - Seek method used (audioEl, mouse-sequence, etc.).
+   */
+  scheduleSeekPostCheck(requestedTime, method) {
+    setTimeout(() => {
+      const timing = this.extractSoundCloudTiming();
+      const actualPosition = timing.position;
+      this.log.info('[CACP-Seek] soundcloud post-seek check', {
+        requestedTime,
+        method,
+        actualPosition,
+        actualDuration: timing.duration,
+        deltaSeconds: actualPosition - requestedTime,
+        audioElCurrentTime: this.audioEl?.currentTime ?? null,
+        displayedDuration: this.getDisplayedDuration(),
+      });
+    }, 300);
   }
 
   /**
@@ -558,25 +651,105 @@ export class SoundCloudHandler extends SiteHandler {
    * Seek to specific time
    */
   async seek(time) {
-    this.log.debug('Seeking to position', { time, timeFormatted: `${time}s` });
-    
-    // Try MSE element first
-    if (this.mseElement) {
-      this.mseElement.currentTime = time;
-      return { success: true, action: 'seek', time };
+    const displayedDuration = this.getDisplayedDuration();
+    this.logSeekMediaSnapshot('before', time);
+    this.log.info('[CACP-Seek] soundcloud seek start', {
+      time,
+      hasAudioEl: !!this.audioEl,
+      hasMse: !!this.mseElement,
+      displayedDuration,
+    });
+
+    // Prefer the captured media element. mseElement can end up holding a raw
+    // MediaSource instance (no currentTime support) if SoundCloud recreates one
+    // mid-stream — guard against silently no-op'ing a seek on that object.
+    // Also cross-check against the UI-displayed duration: SoundCloud can swap
+    // in a new media element mid-stream, leaving `audioEl` pointing at a stale
+    // element whose `.duration` no longer matches the mix — a direct seek
+    // against that would silently clamp to the wrong (usually much shorter)
+    // duration instead of landing at the requested time.
+    if (this.audioEl instanceof HTMLMediaElement && this.audioEl.duration > 0) {
+      if (this.isMediaElementDurationTrustworthy(this.audioEl, displayedDuration)) {
+        this.audioEl.currentTime = time;
+        this.log.info('[CACP-Seek] soundcloud seek via audioEl', {
+          time,
+          audioElDuration: this.audioEl.duration,
+          displayedDuration,
+        });
+        this.scheduleSeekPostCheck(time, 'audioEl');
+        return { success: true, action: 'seek', time, method: 'audioEl' };
+      }
+
+      this.log.warn('[CACP-Seek] soundcloud audioEl rejected — duration mismatch', {
+        time,
+        audioElDuration: this.audioEl.duration,
+        displayedDuration,
+        delta: Math.abs(this.audioEl.duration - displayedDuration),
+      });
+    } else {
+      this.log.info('[CACP-Seek] soundcloud audioEl skipped', {
+        time,
+        hasAudioEl: this.audioEl instanceof HTMLMediaElement,
+        audioElDuration: this.audioEl?.duration ?? null,
+      });
+    }
+
+    if (this.mseElement instanceof HTMLMediaElement) {
+      if (this.isMediaElementDurationTrustworthy(this.mseElement, displayedDuration)) {
+        this.mseElement.currentTime = time;
+        this.log.info('[CACP-Seek] soundcloud seek via mseElement', {
+          time,
+          mseElementDuration: this.mseElement.duration,
+          displayedDuration,
+        });
+        this.scheduleSeekPostCheck(time, 'mseElement');
+        return { success: true, action: 'seek', time, method: 'mseElement' };
+      }
+
+      this.log.warn('[CACP-Seek] soundcloud mseElement rejected — duration mismatch', {
+        time,
+        mseElementDuration: this.mseElement.duration,
+        displayedDuration,
+        delta: Math.abs(this.mseElement.duration - displayedDuration),
+      });
+    } else {
+      this.log.info('[CACP-Seek] soundcloud mseElement skipped', {
+        time,
+        hasMseElement: this.mseElement instanceof HTMLMediaElement,
+      });
     }
 
     // Try any media element
     const mediaElements = document.querySelectorAll('audio, video');
     for (const element of mediaElements) {
-      if (element.duration && element.duration > 0) {
-        element.currentTime = time;
-        return { success: true, action: 'seek', time };
+      if (!element.duration || element.duration <= 0) {
+        continue;
       }
+
+      if (this.isMediaElementDurationTrustworthy(element, displayedDuration)) {
+        element.currentTime = time;
+        this.log.info('[CACP-Seek] soundcloud seek via media element', {
+          time,
+          tag: element.tagName,
+          elementDuration: element.duration,
+          displayedDuration,
+        });
+        this.scheduleSeekPostCheck(time, 'media-element');
+        return { success: true, action: 'seek', time, method: 'media-element' };
+      }
+
+      this.log.warn('[CACP-Seek] soundcloud media element rejected — duration mismatch', {
+        time,
+        tag: element.tagName,
+        elementDuration: element.duration,
+        displayedDuration,
+        delta: Math.abs(element.duration - displayedDuration),
+      });
     }
 
     // Calculate progress bar position and synthesize pointer events on wrapper
-    const duration = this.getDuration();
+    const duration = displayedDuration || this.getDuration();
+    this.log.info('[CACP-Seek] soundcloud seek fallback to click', { time, duration, displayedDuration });
     if (duration > 0) {
       const percentage = time / duration;
       // Prefer the role=progressbar wrapper
@@ -603,11 +776,32 @@ export class SoundCloudHandler extends SiteHandler {
         fire('mouseup');
         fire('click');
 
-        this.log.trace('Seek click dispatched', { percentage: Math.round(percentage * 100), clickX, rectLeft: rect.left, rectWidth: rect.width });
-        return { success: true, action: 'seek', time, method: 'mouse-sequence' };
+        // Diagnostic detail forwarded all the way back to the server/popup —
+        // if rectWidth is ~0 every click lands at rect.left regardless of
+        // percentage, which would explain a seek that always lands near 0.
+        const diagnostics = {
+          percentage: Math.round(percentage * 100),
+          clickX,
+          clickY,
+          rectLeft: rect.left,
+          rectTop: rect.top,
+          rectWidth: rect.width,
+          rectHeight: rect.height,
+          usedWrapper: !!wrapper,
+          clickableClass: clickable.className
+        };
+        this.log.info('[CACP-Seek] soundcloud seek click dispatched', diagnostics);
+        this.scheduleSeekPostCheck(time, 'mouse-sequence');
+        return { success: true, action: 'seek', time, method: 'mouse-sequence', ...diagnostics };
       }
+
+      this.log.warn('[CACP-Seek] soundcloud seek click — no clickable progress element found', {
+        hasWrapper: !!wrapper,
+        hasProgressBar: !!progressBar
+      });
     }
 
+    this.log.warn('[CACP-Seek] soundcloud seek failed — no method available', { time, duration });
     return { success: false, error: 'No seek method available' };
   }
 
@@ -811,7 +1005,7 @@ export class SoundCloudHandler extends SiteHandler {
     }
 
     // Try to get position from discovered MSE element (matches original)
-    if (this.mseElement) {
+    if (this.mseElement instanceof HTMLMediaElement) {
       const position = this.mseElement.currentTime || 0;
       const duration = this.mseElement.duration || 0;
       
@@ -899,8 +1093,10 @@ export class SoundCloudHandler extends SiteHandler {
           sourceBuffers: instance.sourceBuffers.length
         });
 
-        // Store reference for later use
-        self.mseElement = instance;
+        // Note: do NOT store `instance` on self.mseElement — MediaSource has no
+        // `currentTime` (only HTMLMediaElement does). seek() would silently no-op
+        // if this got assigned here. The real element is captured separately via
+        // hookMediaElementSrcObject() once srcObject is set on the <audio>/<video> tag.
 
         // Listen for source opening (streaming starts)
         instance.addEventListener('sourceopen', () => {
@@ -1070,6 +1266,53 @@ export class SoundCloudHandler extends SiteHandler {
         }
       });
     });
+  }
+
+  /**
+   * Bind native media events to a captured audio element
+   * Called when audioEl is first captured via src/srcObject hooks
+   * @param {HTMLMediaElement} el The captured audio element
+   */
+  bindMediaEvents(el) {
+    if (!el || el._cacpBound) return;
+    el._cacpBound = true;
+
+    el.addEventListener('play', () => {
+      this.log.debug('Audio play event fired');
+    });
+
+    el.addEventListener('pause', () => {
+      this.log.debug('Audio pause event fired');
+    });
+
+    el.addEventListener('ended', () => {
+      this.log.debug('Audio ended event fired');
+      this.stopPositionTracking();
+    });
+
+    el.addEventListener('timeupdate', () => {
+      if (!this.positionUpdateInterval) {
+        this.startPositionTracking();
+      }
+    });
+
+    this.log.debug('Media events bound to audio element', { tag: el.tagName });
+  }
+
+  /**
+   * Sanitize a track title from SoundCloud DOM/MediaSession
+   * Strips "Current track: " a11y prefix and removes doubled strings
+   * @param {string} raw Raw title string
+   * @returns {string} Cleaned title
+   */
+  sanitizeTitle(raw) {
+    if (!raw) return raw;
+    const stripped = raw.replace(/^current track:\s*/i, '').trim();
+    const half = Math.floor(stripped.length / 2);
+    if (stripped.length > 0 && stripped.length % 2 === 0 && stripped.slice(0, half) === stripped.slice(half)) {
+      return stripped.slice(0, half);
+    }
+    return stripped;
   }
 
   /**

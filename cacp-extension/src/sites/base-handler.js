@@ -17,7 +17,7 @@ export class SiteHandler {
     
     // Get logger based on config name
     const siteName = this.config.name.toLowerCase();
-    this.log = logger[siteName] || logger.createLogger(siteName);
+    this.log = logger.getComponent(siteName);
   }
 
   /**

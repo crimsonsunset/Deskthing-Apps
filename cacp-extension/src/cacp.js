@@ -60,11 +60,11 @@ class CACPMediaSource {
             loggerKeys: logger ? Object.keys(logger) : 'no logger'
         });
         
-        // Try to load config for logger
+        // Load config and apply to running singleton
         this.loadLoggerConfig();
 
         // Initialize logger
-        this.log = logger.cacp;
+        this.log = logger.getComponent('cacp');
         console.log('🔧 [CACP] Logger initialized:', typeof this.log);
 
         // Core components
@@ -93,53 +93,22 @@ class CACPMediaSource {
      * @private
      */
     loadLoggerConfig() {
-        console.log('🔧 [CACP] Starting logger config load...');
         try {
-            // Attempt to load config via Chrome extension API
             const configUrl = chrome.runtime.getURL('logger-config.json');
-            console.log('🔧 [CACP] Config URL:', configUrl);
-
-            // Try synchronous loading (works in Chrome extensions)
             const xhr = new XMLHttpRequest();
-            xhr.open('GET', configUrl, false); // false = synchronous
+            xhr.open('GET', configUrl, false); // synchronous — fine in extension content scripts
             xhr.send();
-            
-            console.log('🔧 [CACP] Config XHR response:', { status: xhr.status, hasText: !!xhr.responseText });
 
             if (xhr.status === 200 && xhr.responseText) {
                 const config = JSON.parse(xhr.responseText);
-                console.log('🔧 [CACP] Config parsed:', { projectName: config.projectName, globalLevel: config.globalLevel });
-
-                // Apply config to logger using proper method
-                if (logger && logger.configManager) {
-                    console.log('🔧 [CACP] Logger available, merging config...');
-                    // Use the existing loadConfig method which properly merges
-                    logger.configManager.config = logger.configManager.mergeConfigs(logger.configManager.config, config);
-
-                    // Refresh loggers to apply new config
-                    if (logger.controls && logger.controls.refresh) {
-                        console.log('🔧 [CACP] Refreshing logger controls...');
-                        logger.controls.refresh();
-
-                        // Reassign our logger instance to pick up new formatter
-                        this.log = logger.cacp;
-
-                        // Test the new config immediately
-                        this.log.info('🧪 Config test - this should have readable timestamp and purple color!');
-                    } else {
-                        console.warn('🔧 [CACP] Logger controls not available for refresh');
-                    }
-                } else {
-                    console.warn('🔧 [CACP] Logger or configManager not available');
-                }
-
-                console.info('📁 Logger config loaded from Chrome extension:', config.projectName);
+                logger.configure(config);
+                this.log = logger.getComponent('cacp');
+                console.info('📁 Logger config loaded:', config.projectName);
             } else {
-                console.warn('❌ Failed to load config - Status:', xhr.status, 'Response:', xhr.responseText);
+                console.warn('⚠️ [CACP] Failed to load logger-config.json, status:', xhr.status);
             }
         } catch (error) {
-            console.warn('⚠️ Could not load logger config:', error.message);
-            console.warn('📍 Error details:', error);
+            console.warn('⚠️ [CACP] Could not load logger config:', error.message);
         }
     }
 
@@ -453,7 +422,7 @@ class CACPMediaSource {
                 type: 'register-media-source',
                 data: {
                     site: this.activeSiteName,
-                    isActive: this.currentHandler?.isReady ? this.currentHandler.isReady() : false,
+                    isActive: mediaState.isActive,
                     trackInfo: mediaState.trackInfo,
                     isPlaying: mediaState.isPlaying,
                     canControl: this.currentHandler?.canControl || true,
@@ -508,8 +477,9 @@ class CACPMediaSource {
             const isPlaying = this.currentHandler.isPlaying ? this.currentHandler.isPlaying() : (this.currentHandler.getPlayingState ? this.currentHandler.getPlayingState() : false);
             const currentTime = this.currentHandler.getCurrentTime ? this.currentHandler.getCurrentTime() : 0;
             const duration = this.currentHandler.getDuration ? this.currentHandler.getDuration() : 0;
-            // Consider active when either handler reports ready OR media is currently playing
-            const isActive = this.currentHandler.isReady ? (this.currentHandler.isReady() || isPlaying) : isPlaying;
+            // Active when track metadata is present — enables controls even when paused
+            const hasTrackData = !!(trackInfo?.title && trackInfo.title !== 'Unknown Track' && trackInfo.title !== 'Unknown Title');
+            const isActive = hasTrackData || isPlaying;
 
             return {
                 isActive,
@@ -552,31 +522,46 @@ class CACPMediaSource {
      * Report current media state to background script
      */
     async reportMediaState() {
-        if (!this.isRegistered || !this.currentHandler) {
+        if (!this.isRegistered) {
+            this.log.debug('reportMediaState: skipping — not registered');
+            return;
+        }
+
+        if (!this.currentHandler) {
+            this.log.debug('reportMediaState: skipping — no active handler');
             return;
         }
 
         try {
             const currentState = this.getCurrentMediaState();
 
-            // Only send update if state has changed significantly
-            if (this.hasStateChanged(currentState)) {
-                await chrome.runtime.sendMessage({
-                    type: 'update-media-source',
-                    data: currentState
-                });
-
-                this.lastReportedState = {...currentState};
-
-                this.log.trace('Media state reported', {
+            if (!this.hasStateChanged(currentState)) {
+                this.log.trace('reportMediaState: skipping — state unchanged', {
                     site: this.activeSiteName,
                     isPlaying: currentState.isPlaying,
-                    trackTitle: currentState.trackInfo?.title
+                    currentTime: currentState.currentTime
                 });
+                return;
             }
+
+            await chrome.runtime.sendMessage({
+                type: 'update-media-source',
+                data: currentState
+            });
+
+            this.lastReportedState = {...currentState};
+
+            this.log.trace('Media state reported', {
+                site: this.activeSiteName,
+                isPlaying: currentState.isPlaying,
+                trackTitle: currentState.trackInfo?.title,
+                currentTime: currentState.currentTime
+            });
         } catch (error) {
             this.log.warn('Failed to report media state', {
-                error: error.message
+                error: error.message,
+                isRegistered: this.isRegistered,
+                hasChromeRuntimeError: !!chrome.runtime.lastError
             });
         }
     }
@@ -613,6 +598,22 @@ class CACPMediaSource {
                     }));
                 return true; // Async response
             }
+
+            if (message.type === 'sw-restarted') {
+                if (this.currentHandler) {
+                    this.log.warn('SW restarted — forcing re-registration', {
+                        site: this.activeSiteName,
+                        wasRegistered: this.isRegistered
+                    });
+                    this.isRegistered = false;
+                    this.lastReportedState = null;
+                    this.registerWithBackground().catch((err) => {
+                        this.log.error('Re-registration after SW restart failed', { error: err.message });
+                    });
+                } else {
+                    this.log.debug('SW restarted — no active handler, skipping re-registration');
+                }
+            }
         });
     }
 
@@ -644,8 +645,37 @@ class CACPMediaSource {
                     break;
                 case 'seek':
                     if (typeof time === 'number' && this.currentHandler.seek) {
+                        this.log.info('[CACP-Seek] content script seek dispatch', {
+                            time,
+                            site: this.activeSiteName,
+                            handler: this.currentHandler.constructor?.name,
+                        });
                         result = await this.currentHandler.seek(time);
+                        const seekSucceeded = result && typeof result === 'object' && 'success' in result
+                            ? result.success
+                            : !!result;
+                        this.log.info('[CACP-Seek] content script seek result', {
+                            time,
+                            site: this.activeSiteName,
+                            rawResult: result,
+                            interpretedSuccess: seekSucceeded,
+                            method: result?.method ?? null,
+                        });
+                        setTimeout(() => {
+                            const timing = this.currentHandler.getPosition?.()
+                                ?? this.currentHandler.extractSoundCloudTiming?.()
+                                ?? null;
+                            this.log.info('[CACP-Seek] content script post-report timing', {
+                                requestedTime: time,
+                                timing,
+                            });
+                        }, 150);
                     } else {
+                        this.log.warn('[CACP-Seek] content script seek rejected', {
+                            time,
+                            typeofTime: typeof time,
+                            hasSeek: !!this.currentHandler.seek,
+                        });
                         return { success: false, error: 'Seek time missing or unsupported' };
                     }
                     break;
@@ -660,10 +690,17 @@ class CACPMediaSource {
             // Force immediate state report after control
             setTimeout(() => this.reportMediaState(), 100);
 
+            const success = result && typeof result === 'object' && 'success' in result
+                ? !!result.success
+                : !!result;
+
             return {
-                success: !!result,
+                success,
                 action: command,
-                site: this.activeSiteName
+                site: this.activeSiteName,
+                // Forward the raw handler result (e.g. soundcloud.js's seek `method`/`time`)
+                // so background.js can relay it to the server for server-side-only debugging.
+                detail: result && typeof result === 'object' ? result : undefined
             };
 
         } catch (error) {

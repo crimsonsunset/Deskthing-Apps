@@ -10,7 +10,7 @@ const EXTENSION_VERSION = chrome.runtime.getManifest().version;
 let logs = [];
 
 // Initialize popup logger
-const popupLogger = logger.popup;
+const popupLogger = logger.getComponent('popup');
 
 // Utility to format seconds to mm:ss
 function formatTime(sec) {
@@ -209,15 +209,47 @@ class CACPPopup {
   }
 
   /**
+   * Resolves now-playing display fields, preferring server-enriched Format A metadata.
+   * @param {object|null} currentPriority - Active priority source from background.
+   * @param {object|null|undefined} enrichedDisplay - Server-provided in-mix overlay.
+   * @returns {{ title: string, artist: string, artwork: string }} Display fields for UI.
+   */
+  resolveNowPlayingDisplay(currentPriority, enrichedDisplay) {
+    const fallbackTitle = currentPriority?.trackInfo?.title || 'No track';
+    const fallbackArtist = currentPriority?.trackInfo?.artist || '';
+    const fallbackArtwork =
+      currentPriority?.trackInfo?.artwork?.[0]?.src ||
+      currentPriority?.trackInfo?.artwork?.[0] ||
+      '';
+
+    if (!enrichedDisplay?.title) {
+      return {
+        title: fallbackTitle,
+        artist: fallbackArtist,
+        artwork: fallbackArtwork,
+      };
+    }
+
+    return {
+      title: enrichedDisplay.title,
+      artist: enrichedDisplay.artist || fallbackArtist,
+      artwork: enrichedDisplay.thumbnail || fallbackArtwork,
+    };
+  }
+
+  /**
    * Update status section
    */
   updateStatus(totalSources, currentPriority) {
     const statusEl = document.getElementById('status');
     if (!statusEl) return;
 
+    const enrichedDisplay = this.globalState?.enrichedDisplay;
+    const display = this.resolveNowPlayingDisplay(currentPriority, enrichedDisplay);
     const prioritySite = currentPriority ? currentPriority.site : 'None';
-    const priorityTrack = currentPriority?.trackInfo?.title || 'No track';
-    const artwork = currentPriority?.trackInfo?.artwork?.[0]?.src || currentPriority?.trackInfo?.artwork?.[0] || '';
+    const priorityTrack = display.title;
+    const priorityArtist = display.artist;
+    const artwork = display.artwork;
     const isPlaying = !!currentPriority?.isPlaying;
     const currentTime = currentPriority?.currentTime ?? 0;
     const duration = currentPriority?.duration ?? 0;
@@ -232,6 +264,7 @@ class CACPPopup {
       (artwork ? '<img src="' + artwork + '" alt="art" style="width:36px; height:36px; object-fit:cover; border-radius:4px; border:1px solid #333;" />' : '') +
       '    <div style="display:flex; flex-direction:column; gap:6px; min-width:220px;">' +
       '      <div>' + priorityTrack + '</div>' +
+      (priorityArtist ? '      <div style="font-size:11px; color:#888">' + priorityArtist + '</div>' : '') +
       '      <div id="globalProgress" class="progress-click" style="height:6px; background:#333; border-radius:4px; overflow:hidden; position:relative; cursor:pointer;">' +
       '        <div style="position:absolute; left:0; top:0; bottom:0; width:' + pct + '%; background:' + (isPlaying ? '#00B894' : '#555') + ';"></div>' +
       '      </div>' +
@@ -248,6 +281,7 @@ class CACPPopup {
           const rect = bar.getBoundingClientRect();
           const ratio = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
           const target = Math.floor(duration * ratio);
+          console.log('[CACP-Seek] popup global progress click', { ratio, targetSeconds: target, duration });
           this.sendGlobalSeek(target);
         };
       }
@@ -279,9 +313,14 @@ class CACPPopup {
    */
   createSourceItem(source) {
     const isPriority = source.isPriority;
-    const trackTitle = source.trackInfo?.title || 'Unknown Track';
-    const trackArtist = source.trackInfo?.artist || 'Unknown Artist';
-    const artwork = source.trackInfo?.artwork?.[0]?.src || source.trackInfo?.artwork?.[0] || '';
+    const enrichedDisplay = isPriority ? this.globalState?.enrichedDisplay : null;
+    const display = this.resolveNowPlayingDisplay(
+      isPriority ? this.globalState?.currentPriority : source,
+      enrichedDisplay,
+    );
+    const trackTitle = display.title || 'Unknown Track';
+    const trackArtist = display.artist || 'Unknown Artist';
+    const artwork = display.artwork;
     const isPlaying = source.isPlaying;
     const canControl = source.canControl;
     const isActive = source.isActive;
@@ -351,6 +390,7 @@ class CACPPopup {
         const rect = progress.getBoundingClientRect();
         const ratio = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
         const target = Math.floor(duration * ratio);
+        console.log('[CACP-Seek] popup source progress click', { tabId, ratio, targetSeconds: target, duration });
         this.sendSourceSeek(tabId, target);
       };
     }
@@ -416,14 +456,20 @@ class CACPPopup {
    * Send seek command to highest priority source
    */
   async sendGlobalSeek(seconds) {
+    console.log('[CACP-Seek] popup sendGlobalSeek', { seconds });
     try {
       const response = await chrome.runtime.sendMessage({
         type: 'control-media',
         command: 'seek',
         time: seconds
       });
+      console.log('[CACP-Seek] popup sendGlobalSeek response', response);
       if (response?.success) {
-        this.log('Seek to ' + formatTime(seconds) + ' sent successfully');
+        const d = response.detail;
+        const detailSummary = d
+          ? ' (method=' + d.method + ', rectWidth=' + d.rectWidth + ', clickX=' + Math.round(d.clickX || 0) + ')'
+          : '';
+        this.log('Seek to ' + formatTime(seconds) + ' sent successfully' + detailSummary);
         setTimeout(() => this.refreshGlobalState(), 150);
       } else {
         this.log('Seek failed: ' + (response?.error || 'unknown'), 'error');
@@ -460,6 +506,7 @@ class CACPPopup {
    * Send seek to a specific source
    */
   async sendSourceSeek(tabId, seconds) {
+    console.log('[CACP-Seek] popup sendSourceSeek', { tabId, seconds });
     try {
       const response = await chrome.runtime.sendMessage({
         type: 'control-media',

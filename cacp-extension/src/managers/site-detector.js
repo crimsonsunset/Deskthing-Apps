@@ -8,7 +8,7 @@ import logger from '@crimsonsunset/jsg-logger';
 export class SiteDetector {
   constructor() {
     // Initialize logger
-    this.log = logger.siteDetector;
+    this.log = logger.getComponent('site-detector');
     
     this.registeredHandlers = new Map(); // handlerClass -> { name, patterns, priority }
     this.activeSites = new Set(); // Currently active site names

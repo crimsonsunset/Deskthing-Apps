@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
-import { chromeExtension } from "vite-plugin-chrome-extension";
+import { crx } from "@crxjs/vite-plugin";
 import { resolve } from "path";
+import manifest from "./manifest.json" with { type: "json" };
 
 export default defineConfig({
   resolve: {
@@ -10,11 +11,13 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
-    rollupOptions: {
-      input: resolve(import.meta.dirname, "manifest.json")
-    }
   },
-  plugins: [
-    chromeExtension()
-  ],
+  server: {
+    port: 5150,
+    strictPort: true,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+    },
+  },
+  plugins: [crx({ manifest })],
 });
