@@ -20,6 +20,9 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+/** Tracklists are treated as stale after this long, forcing a fresh scrape. */
+const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 const writeLocks = new Map<string, Promise<void>>();
 
 /**
@@ -78,9 +81,9 @@ function ensureTracklistCacheDirs(): void {
 }
 
 /**
- * Reads a cached tracklist from disk when present and schema-valid.
+ * Reads a cached tracklist from disk when present, schema-valid, and not expired.
  * @param {string} cacheKey - Slug filename (no extension).
- * @returns {TracklistResult | null} Cached result, or null on miss or invalid file.
+ * @returns {TracklistResult | null} Cached result, or null on miss, invalid file, or TTL expiry.
  */
 export function readTracklistCache(cacheKey: string): TracklistResult | null {
   for (const dir of TRACKLIST_CACHE_DIRS) {
@@ -92,9 +95,23 @@ export function readTracklistCache(cacheKey: string): TracklistResult | null {
     try {
       const raw = readFileSync(filePath, 'utf8');
       const parsed = TracklistResultSchema.parse(JSON.parse(raw));
+
+      const ageMs = parsed.cachedAt ? Date.now() - parsed.cachedAt : Infinity;
+      if (ageMs > CACHE_TTL_MS) {
+        tracklistLogger.info('Cache expired — forcing re-scrape', {
+          cacheKey,
+          filePath,
+          cachedAt: parsed.cachedAt ?? null,
+          ageMs,
+          ttlMs: CACHE_TTL_MS,
+        });
+        return null;
+      }
+
       tracklistLogger.debug('Cache read hit', {
         cacheKey,
         filePath,
+        ageMs,
         ...summarizeTracks(parsed.tracks),
       });
       return parsed;
@@ -235,6 +252,7 @@ export async function lookupTracklist(
       sourceUrl: scraped.sourceUrl,
       mixTitle: scraped.mixTitle,
       tracks,
+      cachedAt: Date.now(),
     };
     await writeTracklistCache(cacheKey, result);
     tracklistLogger.info('lookupTracklist complete', {

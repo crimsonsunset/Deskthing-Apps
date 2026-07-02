@@ -24,6 +24,9 @@ export const TracklistResultSchema = z.object({
   sourceUrl: z.string().url(),
   mixTitle: z.string(),
   tracks: z.array(TracklistTrackSchema),
+  // Optional for backward compatibility with caches written before TTL support —
+  // treated as expired (forces re-scrape) in readTracklistCache when absent.
+  cachedAt: z.number().optional(),
 });
 
 export type SearchCandidate = z.infer<typeof SearchCandidateSchema>;
