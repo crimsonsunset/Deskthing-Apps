@@ -2,7 +2,7 @@
 
 **Chrome Audio Control Platform — Technical Design**
 
-*Last Updated: June 30, 2026*
+*Last Updated: July 2, 2026*
 
 ---
 
@@ -62,8 +62,32 @@ cacp-extension/
 └── vite.config.js           # CRXJS plugin, port 5150
 
 cacp-app/
+├── logger-config.json       # Server-side jsg-logger component levels (mediastore, tracklist, …)
+├── tsconfig.shared.json     # Composite project ref for shared/ (mirrors ultimateclock pattern)
+├── shared/                  # Cross-boundary logic (@shared alias — src/ ↔ server/)
+│   ├── tracklist-cue-matching.ts   # findCurrentTracklistTrack (single source of truth)
+│   └── index.ts             # Barrel export
 ├── src/                     # React frontend — must use @deskthing/client for now-playing in dev
+│   └── hooks/
+│       ├── use-cacp-music.hook.ts
+│       └── use-cacp-tracklist.hook.ts   # imports findCurrentTracklistTrack from @shared
 └── server/                  # WS bridge server (port 8081)
+    ├── index.ts             # WS server bootstrap, DeskThing lifecycle
+    ├── initializer.ts       # GET/SET request routing
+    ├── mediaStore.ts        # Singleton, command dispatch, state cache, artwork, DeskThing sync
+    ├── extension-ws.handlers.ts      # Extension message routing, ping/pong, command-result logging
+    ├── logger.helpers.ts    # Server jsg-logger bootstrap (mediastoreLogger, tracklistLogger)
+    ├── deskthing-log.helpers.ts      # In-app DeskThing log UI bridge (separate from jsg-logger)
+    ├── imageUtils.ts        # Remote artwork fetch + local cache (write-locked)
+    └── tracklist/           # 1001tracklists lookup pipeline
+        ├── tracklist-song-enrichment.helpers.ts   # In-mix SongData enrichment from cache + progress
+        ├── tracklist-current-track.helpers.ts       # Server-side track resolution (imports @shared)
+        ├── tracklist-lookup.ts
+        ├── tracklist-scraper.ts
+        ├── tracklist-matcher.ts
+        ├── tracklist.handlers.ts
+        ├── chrome-cdp.util.ts
+        └── fixtures/        # Saved HTML for scraper snapshot test
 ```
 
 ## Core Components

@@ -1,6 +1,6 @@
 # Next Session Planning - CACP Development
 
-*Last Updated: June 30, 2026*
+*Last Updated: July 2, 2026*
 
 ## Current Status
 
@@ -32,11 +32,15 @@
 - `:3050` / `:5050` show live track when extension bridge active; empty state when not
 - `npm run build` packages `cacp-v0.1.6.zip` with new client UI
 
+### July 2, 2026 — Tracklist hardening + MediaStore split (Phases 1–5) ✅
+- CDP preflight, scraper fixture test, cache write locks, `@shared` cue-matching, MediaStore decomposition, server jsg-logger adoption
+- Docs reconciled: `architecture.md` file structure, `logging-system.md` (extension + server)
+
 ### Remaining Tasks
 
 - [x] Build `App.tsx` with `@deskthing/client` — `DEVICE_CLIENT.MUSIC` now-playing + transport buttons for emulator dev
 - [ ] Verify YouTube handler works end-to-end (same `isReady()` fix applied but untested)
-- [ ] Clean up excessive `console.log` debug statements in `cacp.js` (logger exposure block ~lines 798–905)
+- [ ] Clean up excessive `console.log` debug statements in `cacp.js` (logger exposure block ~lines 798–905) — server-side now uses jsg-logger; extension content script cleanup still open
 - [ ] Investigate `fileOverrides: 0`, `components: 1` in SW logger init log — SW logger init fires before async config load completes
 - [ ] Test SW keepalive cadence (25s ping to `chrome.runtime.getPlatformInfo`) under real 30s idle termination
 - [ ] Multi-tab priority: confirm two SoundCloud tabs show correct priority switching
@@ -66,10 +70,10 @@ See [docs/cacp/local-development.md](./cacp/local-development.md) for emulator v
 ### Logger (`@crimsonsunset/jsg-logger` v1.8.9)
 
 - **API:** `logger.getComponent('component-name')` — NOT `logger.componentName`
-- **Config:** `logger.configure(config)` with `cacp-extension/logger-config.json`
-- **Content scripts:** sync XHR to load config (no top-level await in content scripts)
-- **Background SW:** async IIFE fetch at startup (top-level await disallowed in SW modules)
-- **Runtime controls:** `window.CACP_Logger` (exposed by `main-world-logger.js`)
+- **Extension config:** `cacp-extension/logger-config.json` (content scripts: sync XHR; background SW: async IIFE fetch)
+- **Server config:** `cacp-app/logger-config.json` via `server/logger.helpers.ts` → `mediastoreLogger` / `tracklistLogger`
+- **DeskThing in-app UI:** `deskthing-log.helpers.ts` (separate from jsg-logger; errors/warnings to emulator log panel)
+- **Runtime controls (extension):** `window.CACP_Logger` (exposed by `main-world-logger.js`)
 
 ### `isActive` Semantics
 
