@@ -149,8 +149,10 @@ export class BridgeManager {
             case 'seek':
               if (typeof msg.time === 'number') {
                 backgroundLogger.info('[CACP-Seek] bridge WS seek received', { time: msg.time, id: msg.id });
+                console.log('[CACP-SEEK-DEBUG] bridge WS seek received', { time: msg.time, id: msg.id });
                 commandResult = await this.sendControlCommand('seek', null, msg.time);
                 backgroundLogger.info('[CACP-Seek] bridge WS seek result', { time: msg.time, result: commandResult });
+                console.log('[CACP-SEEK-DEBUG] bridge WS seek result', { time: msg.time, result: commandResult });
               } else {
                 backgroundLogger.warn('[CACP-Seek] bridge WS seek dropped — msg.time missing or not a number', { msg });
                 commandResult = { success: false, error: 'msg.time missing or not a number' };

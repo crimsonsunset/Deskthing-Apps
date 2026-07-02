@@ -647,30 +647,33 @@ class CACPMediaSource {
                     break;
                 case 'seek':
                     if (typeof time === 'number' && this.currentHandler.seek) {
-                        this.log.info('[CACP-Seek] content script seek dispatch', {
+                        const dispatchInfo = {
                             time,
                             site: this.activeSiteName,
                             handler: this.currentHandler.constructor?.name,
-                        });
+                        };
+                        this.log.info('[CACP-Seek] content script seek dispatch', dispatchInfo);
+                        console.log('[CACP-SEEK-DEBUG] content script dispatch', dispatchInfo);
                         result = await this.currentHandler.seek(time);
                         const seekSucceeded = result && typeof result === 'object' && 'success' in result
                             ? result.success
                             : !!result;
-                        this.log.info('[CACP-Seek] content script seek result', {
+                        const resultInfo = {
                             time,
                             site: this.activeSiteName,
                             rawResult: result,
                             interpretedSuccess: seekSucceeded,
                             method: result?.method ?? null,
-                        });
+                        };
+                        this.log.info('[CACP-Seek] content script seek result', resultInfo);
+                        console.log('[CACP-SEEK-DEBUG] content script result', resultInfo);
                         setTimeout(() => {
                             const timing = this.currentHandler.getPosition?.()
                                 ?? this.currentHandler.extractSoundCloudTiming?.()
                                 ?? null;
-                            this.log.info('[CACP-Seek] content script post-report timing', {
-                                requestedTime: time,
-                                timing,
-                            });
+                            const postReportInfo = { requestedTime: time, timing };
+                            this.log.info('[CACP-Seek] content script post-report timing', postReportInfo);
+                            console.log('[CACP-SEEK-DEBUG] content script post-report timing', postReportInfo);
                         }, 150);
                     } else {
                         this.log.warn('[CACP-Seek] content script seek rejected', {

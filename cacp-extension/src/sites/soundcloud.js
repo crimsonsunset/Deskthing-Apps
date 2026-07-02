@@ -453,7 +453,7 @@ export class SoundCloudHandler extends SiteHandler {
     setTimeout(() => {
       const timing = this.extractSoundCloudTiming();
       const actualPosition = timing.position;
-      this.log.info('[CACP-Seek] soundcloud post-seek check', {
+      const postCheck = {
         requestedTime,
         method,
         actualPosition,
@@ -461,7 +461,9 @@ export class SoundCloudHandler extends SiteHandler {
         deltaSeconds: actualPosition - requestedTime,
         audioElCurrentTime: this.audioEl?.currentTime ?? null,
         displayedDuration: this.getDisplayedDuration(),
-      });
+      };
+      this.log.info('[CACP-Seek] soundcloud post-seek check', postCheck);
+      console.log('[CACP-SEEK-DEBUG] post-seek check', postCheck);
     }, 300);
   }
 
@@ -661,6 +663,18 @@ export class SoundCloudHandler extends SiteHandler {
   }
 
   /**
+   * Finds the inner track element SoundCloud uses for its own scrub-position math.
+   * The outer `progressWrapper` has different padding/inset than this track, so
+   * computing click coordinates against the wrapper's rect drifts from where
+   * SoundCloud actually registers the click — this element's rect matches.
+   * @param {Element} wrapper - Progress bar wrapper from `findProgressBarWrapper`
+   * @returns {Element} The scrub track element, or the wrapper itself as fallback
+   */
+  findSeekTrackElement(wrapper) {
+    return wrapper.querySelector('.playbackTimeline__progressBackground') || wrapper;
+  }
+
+  /**
    * Resolves viewport coordinates and the element under the pointer for a progress-bar seek.
    * @param {number} time - Target position in seconds
    * @param {number} duration - Mix duration in seconds
@@ -672,7 +686,8 @@ export class SoundCloudHandler extends SiteHandler {
       return null;
     }
 
-    const rect = clickable.getBoundingClientRect();
+    const track = this.findSeekTrackElement(clickable);
+    const rect = track.getBoundingClientRect();
     if (rect.width <= 0) {
       return null;
     }
@@ -758,6 +773,7 @@ export class SoundCloudHandler extends SiteHandler {
     };
 
     this.log.info('[CACP-Seek] soundcloud seek click dispatched', diagnostics);
+    console.log('[CACP-SEEK-DEBUG] click dispatched', { time, duration, ...diagnostics });
     return { success: true, action: 'seek', time, method: 'pointer-click', ...diagnostics };
   }
 
@@ -793,8 +809,11 @@ export class SoundCloudHandler extends SiteHandler {
   /**
    * Fine-tunes playback toward the target, reading the ARIA position between
    * steps. Two phases:
-   *   1. Arrow-key steps (~5s each) with an overshoot guard — the loop stops
-   *      once a further press could only overshoot, so it never oscillates.
+   *   1. Arrow-key steps (~5s each), spaced ~90ms apart so SoundCloud's key
+   *      handler can process each press individually (a synchronous burst
+   *      collapses into a single step), with an overshoot guard — the loop
+   *      stops once a further press could only overshoot, so it never
+   *      oscillates.
    *   2. A single absolute progress-bar click, but only when the bar's pixel
    *      resolution can actually resolve the requested tolerance (short/medium
    *      tracks). On long DJ sets the pixel floor exceeds the tolerance, so this
@@ -837,13 +856,15 @@ export class SoundCloudHandler extends SiteHandler {
         maxPresses - presses,
       );
 
+      // SoundCloud's key handler can't process a synchronous burst of keydown
+      // events — without a gap between presses, only ~1 press actually lands.
       const before = actual;
       for (let i = 0; i < burst; i += 1) {
         this.dispatchArrowSeek(key);
         presses += 1;
+        await this.sleep(90);
       }
 
-      await this.sleep(120);
       actual = this.getDisplayedPosition();
 
       if (actual == null || Math.abs(actual - before) < 1) {
@@ -852,7 +873,7 @@ export class SoundCloudHandler extends SiteHandler {
     }
 
     const wrapper = this.findProgressBarWrapper();
-    const barWidth = wrapper ? wrapper.getBoundingClientRect().width : 0;
+    const barWidth = wrapper ? this.findSeekTrackElement(wrapper).getBoundingClientRect().width : 0;
     const pixelSeconds = barWidth > 0 ? duration / barWidth : Infinity;
 
     let precisionClick = false;
@@ -867,7 +888,7 @@ export class SoundCloudHandler extends SiteHandler {
       actual = this.getDisplayedPosition();
     }
 
-    return {
+    const fineTuneResult = {
       finalPosition: actual,
       error: actual == null ? null : time - actual,
       presses,
@@ -875,6 +896,8 @@ export class SoundCloudHandler extends SiteHandler {
       pixelSeconds: Number.isFinite(pixelSeconds) ? Math.round(pixelSeconds * 100) / 100 : null,
       reachedTolerance: actual != null && Math.abs(time - actual) <= toleranceSeconds,
     };
+    console.log('[CACP-SEEK-DEBUG] fine-tune complete', { time, duration, ...fineTuneResult });
+    return fineTuneResult;
   }
 
   /**
