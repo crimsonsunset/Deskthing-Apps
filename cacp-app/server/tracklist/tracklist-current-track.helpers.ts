@@ -1,5 +1,8 @@
+import { findCurrentTracklistTrack } from '@shared/tracklist-cue-matching';
 import type { TracklistTrack } from './tracklist.types.js';
 import { isPlaceholderTrackArt } from './tracklist-artwork.helpers.js';
+
+export { findCurrentTracklistTrack };
 
 export type InMixSongFields = {
   track_name: string;
@@ -8,39 +11,6 @@ export type InMixSongFields = {
   thumbnailRemote: string | null;
   inMixOrder: number;
 };
-
-/**
- * Finds the tracklist row active at the given playback position using cue timestamps.
- * @param {TracklistTrack[]} tracks - Ordered tracklist rows (sorted by cue).
- * @param {number | null | undefined} progressMs - Current playback position in milliseconds.
- * @returns {TracklistTrack | null} The last track whose cue is at or before progressMs.
- */
-export function findCurrentTracklistTrack(
-  tracks: TracklistTrack[],
-  progressMs: number | null | undefined,
-): TracklistTrack | null {
-  if (!tracks.length || progressMs == null || progressMs < 0) {
-    return null;
-  }
-
-  const progressSec = Math.floor(progressMs / 1000);
-  let current: TracklistTrack | null = null;
-
-  for (const track of tracks) {
-    if (track.cueSeconds == null) {
-      continue;
-    }
-
-    if (track.cueSeconds <= progressSec) {
-      current = track;
-      continue;
-    }
-
-    break;
-  }
-
-  return current;
-}
 
 /**
  * Builds Format A sendSong fields for the active in-mix track.

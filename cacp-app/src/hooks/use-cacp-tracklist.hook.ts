@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { DeskThing } from '@deskthing/client';
+import { findCurrentTracklistTrack } from '@shared/tracklist-cue-matching';
+
+export { findCurrentTracklistTrack };
 
 export type TracklistTrackView = {
   order: number;
@@ -78,39 +81,6 @@ export const useCacpTracklist = (): TracklistState => {
     mixKey,
     lookupTracklist,
   };
-};
-
-/**
- * Finds the in-mix track row for the current playback position.
- * @param {TracklistTrackView[]} tracks - Ordered tracklist rows with cue seconds.
- * @param {number | null | undefined} progressMs - Current mix position in milliseconds.
- * @returns {TracklistTrackView | null} Active track row, if any.
- */
-export const findCurrentTracklistTrack = (
-  tracks: TracklistTrackView[],
-  progressMs: number | null | undefined,
-): TracklistTrackView | null => {
-  if (!tracks.length || progressMs == null || progressMs < 0) {
-    return null;
-  }
-
-  const progressSec = Math.floor(progressMs / 1000);
-  let current: TracklistTrackView | null = null;
-
-  for (const track of tracks) {
-    if (track.cueSeconds == null) {
-      continue;
-    }
-
-    if (track.cueSeconds <= progressSec) {
-      current = track;
-      continue;
-    }
-
-    break;
-  }
-
-  return current;
 };
 
 /**

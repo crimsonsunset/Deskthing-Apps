@@ -18,7 +18,10 @@
     "verbatimModuleSyntax": true,
     "jsx": "react-jsx",
     "esModuleInterop": true,
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "@shared/*": ["./shared/*"]
+    }
   },
   "include": [
     "src/**/*",
@@ -27,6 +30,9 @@
   "exclude": [
     "node_modules",
     "dist"
+  ],
+  "references": [
+    { "path": "./tsconfig.shared.json" }
   ]
 }
 
