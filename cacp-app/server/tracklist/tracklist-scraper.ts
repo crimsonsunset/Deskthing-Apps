@@ -287,6 +287,31 @@ export async function searchTracklists(
 }
 
 /**
+ * Scrolls the page in increments to trigger lazy-loaded track artwork below the
+ * fold — without this, only the initially visible row(s) have a real `img.src`
+ * by the time the DOM is parsed.
+ * @param {import('puppeteer-core').Page} page - Tracklist page to scroll.
+ */
+async function autoScrollToLoadArtwork(page: import('puppeteer-core').Page): Promise<void> {
+  await page.evaluate(async () => {
+    const distance = 800;
+    const stepDelayMs = 150;
+    const maxSteps = 60;
+
+    for (let step = 0; step < maxSteps; step += 1) {
+      window.scrollBy(0, distance);
+      await new Promise((resolve) => setTimeout(resolve, stepDelayMs));
+
+      if (window.scrollY + window.innerHeight >= document.body.scrollHeight) {
+        break;
+      }
+    }
+
+    window.scrollTo(0, 0);
+  });
+}
+
+/**
  * Scrapes a single 1001tracklists.com tracklist page into structured track rows.
  * @param {Browser} browser - Connected Puppeteer browser (shared Chrome session).
  * @param {string} url - Absolute tracklist page URL.
@@ -328,6 +353,9 @@ export async function scrapeTracklist(
       await logFailureDiagnostics(page, 'scrape-selector-timeout');
       throw waitErr;
     }
+
+    tracklistLogger.debug('Scrolling to trigger lazy-loaded artwork', { url });
+    await autoScrollToLoadArtwork(page);
 
     const scraped = await page.evaluate((parserSource: string) => {
       const parseTracklistDom = eval(`(${parserSource})`) as (document: Document) => ParsedTracklistDom;
