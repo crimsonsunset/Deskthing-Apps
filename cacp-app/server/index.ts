@@ -5,11 +5,14 @@ import { CACPMediaStore } from "./mediaStore";
 import { deleteImages } from "./imageUtils";
 import { initializeListeners } from "./initializer";
 import { sendDeskThingError, sendDeskThingLog } from "./deskthing-log.helpers.js";
+import { loadCacpAppEnv } from "./load-env.helpers.js";
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+loadCacpAppEnv();
 
 let wss: WebSocketServer | null = null;
 let isStarted = false;

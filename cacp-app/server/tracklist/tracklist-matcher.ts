@@ -113,13 +113,15 @@ async function requestMatchFromOpenRouter(
     throw new Error('OpenRouter response did not include message content');
   }
 
-  tracklistLogger.debug(`OpenRouter raw response: ${content.slice(0, 500)}`);
+  tracklistLogger.debug('OpenRouter raw response', { preview: content.slice(0, 500) });
 
   const parsedJson = JSON.parse(stripMarkdownFences(content)) as unknown;
   const match = MatchResponseSchema.parse(parsedJson);
-  tracklistLogger.info(
-    `Matcher result — matchedUrl=${match.matchedUrl ?? 'null'} confidence=${match.confidence} reasoning="${match.reasoning}"`,
-  );
+  tracklistLogger.info('Matcher result', {
+    matchedUrl: match.matchedUrl,
+    confidence: match.confidence,
+    reasoning: match.reasoning,
+  });
   return match;
 }
 
@@ -133,9 +135,10 @@ export async function matchBestCandidate(
   query: string,
   candidates: SearchCandidate[],
 ): Promise<MatchResponse> {
-  tracklistLogger.info(
-    `matchBestCandidate start — query="${query}" candidates=${candidates.length}`,
-  );
+  tracklistLogger.info('matchBestCandidate start', {
+    query,
+    candidateCount: candidates.length,
+  });
 
   if (candidates.length === 0) {
     tracklistLogger.warn('No candidates provided — skipping OpenRouter call');
@@ -151,7 +154,7 @@ export async function matchBestCandidate(
     throw new Error('OPENROUTER_API_KEY is not set in cacp-app/.env');
   }
 
-  tracklistLogger.debug(`Calling OpenRouter (${MATCHER_MODEL})`);
+  tracklistLogger.debug('Calling OpenRouter', { model: MATCHER_MODEL, query });
   const prompt = buildMatchPrompt(query, candidates);
   return requestMatchFromOpenRouter(apiKey, prompt);
 }

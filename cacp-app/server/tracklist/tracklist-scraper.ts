@@ -1,5 +1,6 @@
 import type { Browser } from 'puppeteer-core';
 import { tracklistLogger } from '../logger.helpers.js';
+import { errorFields, summarizeTracks, timingMs, timingStart } from './tracklist-log.helpers.js';
 import { dumpDebugSnapshot } from './tracklist-debug.util.js';
 import {
   SearchCandidateSchema,
@@ -12,10 +13,9 @@ const SEARCH_BASE_URL = 'https://www.1001tracklists.com/';
 const MAX_SEARCH_CANDIDATES = 10;
 const SEARCH_INPUT_SELECTOR = '#sBoxInput';
 const TRACKLIST_LINK_SELECTOR = 'a[href*="/tracklist/"]';
-const TRACK_ROW_SELECTOR = 'div[id^="tlp_"]';
+const TRACK_ROW_SELECTOR = 'div.tlpItem[id^="tlp_"]';
 const SEARCH_RESULTS_TIMEOUT_MS = 15_000;
 const PAGE_LOAD_TIMEOUT_MS = 30_000;
-const PLACEHOLDER_ART_PATTERN = /default_100\.png|empty\.png|\/artworks\/default/i;
 
 type ParsedTracklistDom = {
   mixTitle: string;
@@ -36,16 +36,21 @@ type ParsedTracklistDom = {
  */
 export function parseTracklistDom(document: Document): ParsedTracklistDom {
   const mixTitle =
+    document.querySelector('#pageTitle h1')?.textContent?.replace(/\s+/g, ' ').trim() ??
     document.querySelector('h1')?.textContent?.replace(/\s+/g, ' ').trim() ??
     document.title.replace(/\s*\|\s*1001Tracklists.*$/i, '').trim();
 
-  const rows = Array.from(document.querySelectorAll('div[id^="tlp_"]')).filter(
+  // ponytail: inlined for page.evaluate — outer module constants are not in eval scope
+  const placeholderArt = /default_100\.png|empty\.png|\/artworks\/default/i;
+
+  const rows = Array.from(
+    document.querySelectorAll('div.tlpItem[id^="tlp_"], div[id^="tlp_"]'),
+  ).filter(
     (row) =>
       row.querySelector('meta[itemprop="name"]') ?? row.querySelector('meta[itemprop="byArtist"]'),
   );
 
   const tracks = rows.map((row, index) => {
-    const rowId = row.id;
     const artist =
       row.querySelector('meta[itemprop="byArtist"]')?.getAttribute('content')?.trim() ?? '';
     const fullName =
@@ -55,17 +60,23 @@ export function parseTracklistDom(document: Document): ParsedTracklistDom {
         ? fullName.slice(artist.length + 3).trim()
         : fullName;
 
-    const cueInputId = `${rowId.replace(/^tlp_/, 'tlp')}_cue_seconds`;
-    const cueInput = document.querySelector<HTMLInputElement>(`#${cueInputId}`);
+    const cueInput =
+      row.querySelector<HTMLInputElement>('input[id$="_cue_seconds"]') ??
+      document.querySelector<HTMLInputElement>(
+        `#${row.id.replace(/^tlp_/, 'tlp')}_cue_seconds`,
+      );
     const cueRaw = cueInput?.value?.trim();
     const parsedCue = cueRaw !== undefined && cueRaw !== '' ? Number.parseInt(cueRaw, 10) : null;
 
     const artImg = row.querySelector('img.artwork.artM');
     const artRaw = artImg?.getAttribute('src') || artImg?.getAttribute('data-src') || '';
-    const isPlaceholderArt = !artRaw || PLACEHOLDER_ART_PATTERN.test(artRaw);
+    const isPlaceholderArt = !artRaw || placeholderArt.test(artRaw);
+
+    const trnoRaw = row.getAttribute('data-trno');
+    const orderFromDom = trnoRaw !== null ? Number.parseInt(trnoRaw, 10) + 1 : null;
 
     return {
-      order: index + 1,
+      order: orderFromDom !== null && !Number.isNaN(orderFromDom) ? orderFromDom : index + 1,
       cueSeconds: parsedCue !== null && Number.isNaN(parsedCue) ? null : parsedCue,
       artist,
       title,
@@ -99,11 +110,14 @@ async function logFailureDiagnostics(
     .then((el) => el !== null)
     .catch(() => false);
 
-  tracklistLogger.warn(
-    `${label} diagnostics — url=${url} title="${title}" ` +
-      `a[href*="tracklist"]=${looseTracklistAnchorCount} totalAnchors=${totalAnchorCount} ` +
-      `${SEARCH_INPUT_SELECTOR}Present=${hasSearchInput}`,
-  );
+  tracklistLogger.warn('Page diagnostics after selector failure', {
+    label,
+    url,
+    title,
+    looseTracklistAnchorCount,
+    totalAnchorCount,
+    hasSearchInput,
+  });
 
   await dumpDebugSnapshot(page, label);
 }
@@ -118,62 +132,73 @@ export async function searchTracklists(
   browser: Browser,
   query: string,
 ): Promise<SearchCandidate[]> {
-  tracklistLogger.info(`searchTracklists start — query="${query}"`);
+  tracklistLogger.info('searchTracklists start', { query });
+  const startedMs = timingStart();
   const page = await browser.newPage();
 
   try {
-    tracklistLogger.debug(`Navigating to ${SEARCH_BASE_URL}`);
+    tracklistLogger.debug('Navigating to search base URL', { url: SEARCH_BASE_URL });
     await page.goto(SEARCH_BASE_URL, {
       waitUntil: 'networkidle2',
       timeout: PAGE_LOAD_TIMEOUT_MS,
     });
-    tracklistLogger.debug(`Loaded — url=${page.url()} title="${await page.title()}"`);
+    tracklistLogger.debug('Search page loaded', {
+      url: page.url(),
+      title: await page.title(),
+    });
 
     const inputHandle = await page.$(SEARCH_INPUT_SELECTOR);
     if (!inputHandle) {
-      tracklistLogger.warn(
-        `Search input ${SEARCH_INPUT_SELECTOR} not found on page — cookie/consent overlay likely blocking it`,
-      );
+      tracklistLogger.warn('Search input not found — consent overlay likely blocking', {
+        selector: SEARCH_INPUT_SELECTOR,
+        url: page.url(),
+      });
       await logFailureDiagnostics(page, 'search-input-missing');
       return [];
     }
 
-    tracklistLogger.debug(`Clicking ${SEARCH_INPUT_SELECTOR}`);
+    tracklistLogger.debug('Submitting search query', { selector: SEARCH_INPUT_SELECTOR, query });
     await page.click(SEARCH_INPUT_SELECTOR);
-    tracklistLogger.debug('Typing query (CDP keyboard.type, delay=50ms)');
     await page.keyboard.type(query, { delay: 50 });
-    tracklistLogger.debug('Pressing Enter');
     await page.keyboard.press('Enter');
 
-    tracklistLogger.debug(
-      `Waiting up to ${SEARCH_RESULTS_TIMEOUT_MS}ms for navigation to /search/result.php`,
-    );
+    tracklistLogger.debug('Waiting for search results navigation', {
+      timeoutMs: SEARCH_RESULTS_TIMEOUT_MS,
+      expectedPath: '/search/',
+    });
     try {
       await page.waitForFunction(
         () => window.location.pathname.includes('/search/'),
         { timeout: SEARCH_RESULTS_TIMEOUT_MS },
       );
     } catch (waitErr: unknown) {
-      const message = waitErr instanceof Error ? waitErr.message : String(waitErr);
-      tracklistLogger.warn(
-        `Never navigated to /search/ (still on ${page.url()}) — search interaction likely didn't register: ${message}`,
-      );
+      tracklistLogger.warn('Search navigation timeout', {
+        url: page.url(),
+        ...errorFields(waitErr),
+      });
       await logFailureDiagnostics(page, 'search-navigation-timeout');
       return [];
     }
 
-    tracklistLogger.debug(`Navigated to results — url=${page.url()} title="${await page.title()}"`);
+    tracklistLogger.debug('Search results page loaded', {
+      url: page.url(),
+      title: await page.title(),
+    });
 
-    tracklistLogger.debug(
-      `Waiting up to ${SEARCH_RESULTS_TIMEOUT_MS}ms for ${TRACKLIST_LINK_SELECTOR}`,
-    );
+    tracklistLogger.debug('Waiting for tracklist link selector', {
+      selector: TRACKLIST_LINK_SELECTOR,
+      timeoutMs: SEARCH_RESULTS_TIMEOUT_MS,
+    });
     try {
       await page.waitForSelector(TRACKLIST_LINK_SELECTOR, {
         timeout: SEARCH_RESULTS_TIMEOUT_MS,
       });
     } catch (waitErr: unknown) {
-      const message = waitErr instanceof Error ? waitErr.message : String(waitErr);
-      tracklistLogger.warn(`waitForSelector(${TRACKLIST_LINK_SELECTOR}) failed: ${message}`);
+      tracklistLogger.warn('Tracklist link selector timeout', {
+        selector: TRACKLIST_LINK_SELECTOR,
+        url: page.url(),
+        ...errorFields(waitErr),
+      });
       await logFailureDiagnostics(page, 'search-selector-timeout');
       return [];
     }
@@ -211,24 +236,37 @@ export async function searchTracklists(
         SEARCH_BASE_URL,
       );
     } catch (evalErr: unknown) {
-      const message = evalErr instanceof Error ? evalErr.message : String(evalErr);
-      tracklistLogger.warn(
-        `$$eval(${TRACKLIST_LINK_SELECTOR}) failed (likely a DOM race — page re-rendered mid-query): ${message}`,
-      );
+      tracklistLogger.warn('Tracklist link eval failed — DOM race likely', {
+        selector: TRACKLIST_LINK_SELECTOR,
+        url: page.url(),
+        ...errorFields(evalErr),
+      });
       await logFailureDiagnostics(page, 'search-eval-dom-race');
       return [];
     }
 
-    tracklistLogger.info(
-      `Found ${rawCandidates.length} raw candidates (capping at ${MAX_SEARCH_CANDIDATES})`,
-    );
+    tracklistLogger.info('searchTracklists raw candidates', {
+      query,
+      rawCount: rawCandidates.length,
+      cap: MAX_SEARCH_CANDIDATES,
+    });
 
     const candidates = rawCandidates
       .slice(0, MAX_SEARCH_CANDIDATES)
       .map((candidate) => SearchCandidateSchema.parse(candidate));
 
     candidates.forEach((candidate, index) => {
-      tracklistLogger.debug(`  [${index + 1}] "${candidate.title}" → ${candidate.url}`);
+      tracklistLogger.debug('Search candidate', {
+        index: index + 1,
+        title: candidate.title,
+        url: candidate.url,
+      });
+    });
+
+    tracklistLogger.info('searchTracklists complete', {
+      query,
+      candidateCount: candidates.length,
+      ms: timingMs(startedMs),
     });
 
     return candidates;
@@ -248,27 +286,35 @@ export async function scrapeTracklist(
   browser: Browser,
   url: string,
 ): Promise<TracklistResult> {
-  tracklistLogger.info(`scrapeTracklist start — url=${url}`);
+  tracklistLogger.info('scrapeTracklist start', { url });
+  const startedMs = timingStart();
   const page = await browser.newPage();
 
   try {
-    tracklistLogger.debug(`Navigating to ${url}`);
+    tracklistLogger.debug('Navigating to tracklist page', { url });
     await page.goto(url, {
       waitUntil: 'networkidle2',
       timeout: PAGE_LOAD_TIMEOUT_MS,
     });
-    tracklistLogger.debug(`Loaded — url=${page.url()} title="${await page.title()}"`);
+    tracklistLogger.debug('Tracklist page loaded', {
+      url: page.url(),
+      title: await page.title(),
+    });
 
-    tracklistLogger.debug(
-      `Waiting up to ${SEARCH_RESULTS_TIMEOUT_MS}ms for ${TRACK_ROW_SELECTOR}`,
-    );
+    tracklistLogger.debug('Waiting for track row selector', {
+      selector: TRACK_ROW_SELECTOR,
+      timeoutMs: SEARCH_RESULTS_TIMEOUT_MS,
+    });
     try {
       await page.waitForSelector(TRACK_ROW_SELECTOR, {
         timeout: SEARCH_RESULTS_TIMEOUT_MS,
       });
     } catch (waitErr: unknown) {
-      const message = waitErr instanceof Error ? waitErr.message : String(waitErr);
-      tracklistLogger.warn(`waitForSelector(${TRACK_ROW_SELECTOR}) failed: ${message}`);
+      tracklistLogger.warn('Track row selector timeout', {
+        selector: TRACK_ROW_SELECTOR,
+        url: page.url(),
+        ...errorFields(waitErr),
+      });
       await logFailureDiagnostics(page, 'scrape-selector-timeout');
       throw waitErr;
     }
@@ -278,9 +324,12 @@ export async function scrapeTracklist(
       return parseTracklistDom(document);
     }, parseTracklistDom.toString());
 
-    tracklistLogger.info(
-      `Scraped "${scraped.mixTitle}" — ${scraped.tracks.length} track rows`,
-    );
+    tracklistLogger.info('scrapeTracklist parsed DOM', {
+      url,
+      mixTitle: scraped.mixTitle,
+      ms: timingMs(startedMs),
+      ...summarizeTracks(scraped.tracks),
+    });
 
     return TracklistResultSchema.parse({
       sourceUrl: url,

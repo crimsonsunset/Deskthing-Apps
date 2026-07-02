@@ -1,4 +1,5 @@
 import { saveRemoteImage } from '../imageUtils.js';
+import { tracklistLogger } from '../logger.helpers.js';
 import type { TracklistTrack } from './tracklist.types.js';
 
 const PLACEHOLDER_ART_PATTERN = /default_100\.png|empty\.png|\/artworks\/default/i;
@@ -42,7 +43,22 @@ export async function processTracklistArtwork(
 
     const fileName = `${cacheKey}-t${track.order}`.slice(0, 80);
     const localPath = await saveRemoteImage(track.artworkUrl, fileName);
-    processed.push(localPath ? { ...track, processedArtwork: localPath } : track);
+    if (localPath) {
+      tracklistLogger.debug('Track artwork cached', {
+        cacheKey,
+        order: track.order,
+        fileName,
+        localPath,
+      });
+      processed.push({ ...track, processedArtwork: localPath });
+    } else {
+      tracklistLogger.warn('Track artwork download failed', {
+        cacheKey,
+        order: track.order,
+        artworkUrl: track.artworkUrl,
+      });
+      processed.push(track);
+    }
   }
 
   return processed;

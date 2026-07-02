@@ -26,7 +26,7 @@ export async function connectToChrome(
     );
   }
 
-  tracklistLogger.debug(`Reading DevToolsActivePort from ${devToolsActivePortPath}`);
+  tracklistLogger.debug('Reading DevToolsActivePort', { path: devToolsActivePortPath });
   const raw = await readFile(devToolsActivePortPath, 'utf8');
   const [port, wsPath] = raw
     .split('\n')
@@ -40,8 +40,8 @@ export async function connectToChrome(
   }
 
   const browserWSEndpoint = `ws://127.0.0.1:${port}${wsPath}`;
-  tracklistLogger.debug(`Connecting to ${browserWSEndpoint}`);
+  tracklistLogger.debug('Connecting to Chrome CDP', { browserWSEndpoint });
   const browser = await puppeteer.connect({ browserWSEndpoint });
-  tracklistLogger.info(`Connected — browser version: ${await browser.version()}`);
+  tracklistLogger.info('Chrome CDP connected', { browserVersion: await browser.version() });
   return browser;
 }

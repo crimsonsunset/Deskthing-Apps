@@ -30,6 +30,24 @@ export type TracklistState = {
 const TRACKLIST_EVENT = 'tracklist';
 
 /**
+ * Dev-only client log for emulator tracklist state transitions.
+ * @param {string} message - Log message.
+ * @param {Record<string, unknown>} [context] - Optional structured context.
+ */
+function logTracklistClient(message: string, context?: Record<string, unknown>): void {
+  if (!import.meta.env.DEV) {
+    return;
+  }
+
+  if (context) {
+    console.debug(`[CACP-Tracklist] ${message}`, context);
+    return;
+  }
+
+  console.debug(`[CACP-Tracklist] ${message}`);
+}
+
+/**
  * Subscribe to server tracklist lookup results and request lookups from the emulator UI.
  */
 export const useCacpTracklist = (): TracklistState => {
@@ -39,6 +57,12 @@ export const useCacpTracklist = (): TracklistState => {
   const [mixKey, setMixKey] = useState<string | null>(null);
 
   useEffect(() => {
+    logTracklistClient('mount — requesting server sync');
+    DeskThing.send({
+      type: TRACKLIST_EVENT,
+      request: 'sync',
+    });
+
     const removeListener = DeskThing.on(TRACKLIST_EVENT, (data) => {
       if (data.request !== 'result' || !data.payload) {
         return;
@@ -50,6 +74,13 @@ export const useCacpTracklist = (): TracklistState => {
         error?: string;
         mixKey?: string;
       };
+
+      logTracklistClient('server update', {
+        status: payload.status ?? 'idle',
+        mixKey: payload.mixKey ?? null,
+        trackCount: payload.result?.tracks.length ?? 0,
+        error: payload.error ?? null,
+      });
 
       setStatus(payload.status ?? 'idle');
       setResult(payload.result ?? null);
@@ -64,6 +95,7 @@ export const useCacpTracklist = (): TracklistState => {
    * Ask the server to search/match/scrape (or read cache) for a mix tracklist.
    */
   const lookupTracklist = useCallback((artist: string, title: string) => {
+    logTracklistClient('manual lookup request', { artist, title });
     setStatus('loading');
     setError(null);
 
@@ -88,6 +120,31 @@ export const useCacpTracklist = (): TracklistState => {
  * @param {number | null} cueSeconds - Cue point in seconds.
  * @returns {string} Display time.
  */
+/**
+ * Resolves raw mix artist/title for lookup from DeskThing song fields.
+ * Enriched in-mix rows use artist `via {mixTitle} · {mixArtist}`.
+ * @param {string | null | undefined} artist - Song artist line from DeskThing.
+ * @param {string | null | undefined} trackName - Song title from DeskThing.
+ * @returns {{ artist: string; title: string } | null} Mix identity for lookup, if parseable.
+ */
+export const resolveMixLookupIdentity = (
+  artist: string | null | undefined,
+  trackName: string | null | undefined,
+): { artist: string; title: string } | null => {
+  const artistLine = artist?.trim();
+  const titleLine = trackName?.trim();
+  if (!artistLine || !titleLine) {
+    return null;
+  }
+
+  const viaMatch = /^via (.+) · (.+)$/i.exec(artistLine);
+  if (viaMatch) {
+    return { title: viaMatch[1].trim(), artist: viaMatch[2].trim() };
+  }
+
+  return { artist: artistLine, title: titleLine };
+};
+
 export const formatCueSeconds = (cueSeconds: number | null): string => {
   if (cueSeconds == null || cueSeconds < 0) {
     return '—';

@@ -1,5 +1,6 @@
 import { SongAbilities, type SongData } from '@deskthing/types';
 import type { ExtensionDataState } from '../extension-ws.handlers.js';
+import { tracklistLogger } from '../logger.helpers.js';
 import { buildTracklistCacheKey, readTracklistCache } from './tracklist-lookup.js';
 import {
   buildInMixSongFields,
@@ -50,13 +51,29 @@ export function enrichSongWithTracklist(
   if (cached?.tracks.length) {
     const current = findCurrentTracklistTrack(cached.tracks, progressMs);
     if (current) {
+      tracklistLogger.debug('In-mix enrichment applied', {
+        cacheKey,
+        progressMs,
+        order: current.order,
+        artist: current.artist,
+        title: current.title,
+        cueSeconds: current.cueSeconds,
+      });
       const enriched = buildInMixSongFields(current, rawTitle, rawArtist, mixThumbnail);
       trackName = enriched.track_name;
       artistLine = enriched.artist;
       thumbnail = enriched.thumbnail;
       thumbnailRemote = enriched.thumbnailRemote;
       inMixOrder = enriched.inMixOrder;
+    } else {
+      tracklistLogger.debug('Tracklist cached but no in-mix row for progress', {
+        cacheKey,
+        progressMs,
+        trackCount: cached.tracks.length,
+      });
     }
+  } else {
+    tracklistLogger.debug('No tracklist cache for enrichment', { cacheKey, progressMs });
   }
 
   return { trackName, artistLine, thumbnail, thumbnailRemote, inMixOrder };

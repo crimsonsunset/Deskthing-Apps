@@ -10,6 +10,13 @@ import {
 } from './tracklist-artwork.helpers.js';
 import { TracklistResultSchema, type TracklistResult } from './tracklist.types.js';
 import { tracklistLogger } from '../logger.helpers.js';
+import {
+  errorFields,
+  summarizeResult,
+  summarizeTracks,
+  timingMs,
+  timingStart,
+} from './tracklist-log.helpers.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -84,8 +91,19 @@ export function readTracklistCache(cacheKey: string): TracklistResult | null {
 
     try {
       const raw = readFileSync(filePath, 'utf8');
-      return TracklistResultSchema.parse(JSON.parse(raw));
-    } catch {
+      const parsed = TracklistResultSchema.parse(JSON.parse(raw));
+      tracklistLogger.debug('Cache read hit', {
+        cacheKey,
+        filePath,
+        ...summarizeTracks(parsed.tracks),
+      });
+      return parsed;
+    } catch (err: unknown) {
+      tracklistLogger.warn('Cache read failed — corrupt or invalid file', {
+        cacheKey,
+        filePath,
+        ...errorFields(err),
+      });
       return null;
     }
   }
@@ -127,12 +145,11 @@ function scheduleArtworkBackfill(cacheKey: string, cached: TracklistResult): voi
           writeFileSync(join(dir, `${cacheKey}.json`), payload, 'utf8');
         }
       });
-      tracklistLogger.info(`Artwork backfill complete for ${cacheKey}`);
+      tracklistLogger.info('Artwork backfill complete', { cacheKey });
       const { CACPMediaStore } = await import('../mediaStore.js');
       CACPMediaStore.getInstance().handleTracklistReady();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      tracklistLogger.warn(`Artwork backfill failed for ${cacheKey}: ${message}`);
+      tracklistLogger.warn('Artwork backfill failed', { cacheKey, ...errorFields(err) });
     }
   })();
 }
@@ -148,50 +165,94 @@ export async function lookupTracklist(
   title: string,
 ): Promise<TracklistResult | null> {
   const cacheKey = buildTracklistCacheKey(artist, title);
-  tracklistLogger.info(`lookupTracklist start — artist="${artist}" title="${title}" cacheKey=${cacheKey}`);
+  const lookupStartedMs = timingStart();
+
+  tracklistLogger.info('lookupTracklist start', { artist, title, cacheKey });
 
   const cached = readTracklistCache(cacheKey);
   if (cached) {
-    tracklistLogger.info(`Cache hit for ${cacheKey} — ${cached.tracks.length} tracks, skipping network`);
+    tracklistLogger.info('lookupTracklist cache hit', {
+      cacheKey,
+      ms: timingMs(lookupStartedMs),
+      needsArtworkBackfill: tracklistNeedsArtworkBackfill(cached.tracks),
+      ...summarizeResult(cached),
+    });
     if (tracklistNeedsArtworkBackfill(cached.tracks)) {
       scheduleArtworkBackfill(cacheKey, cached);
     }
     return cached;
   }
 
-  tracklistLogger.info(`Cache miss for ${cacheKey} — running full lookup`);
+  tracklistLogger.info('lookupTracklist cache miss — network pipeline', { cacheKey, query: `${artist} ${title}`.trim() });
   const query = `${artist} ${title}`.trim();
   const browser = await connectToChrome();
 
   try {
+    const searchStartedMs = timingStart();
     const candidates = await searchTracklists(browser, query);
+    tracklistLogger.info('lookup phase: search', {
+      cacheKey,
+      candidateCount: candidates.length,
+      ms: timingMs(searchStartedMs),
+    });
     if (candidates.length === 0) {
-      tracklistLogger.warn(`No search candidates for "${query}" — returning null (no attribution)`);
+      tracklistLogger.warn('lookupTracklist no candidates', { cacheKey, query });
       return null;
     }
 
+    const matchStartedMs = timingStart();
     const match = await matchBestCandidate(query, candidates);
+    tracklistLogger.info('lookup phase: match', {
+      cacheKey,
+      matchedUrl: match.matchedUrl,
+      confidence: match.confidence,
+      ms: timingMs(matchStartedMs),
+    });
     if (!match.matchedUrl) {
-      tracklistLogger.warn(`Matcher returned null matchedUrl for "${query}" — returning null`);
+      tracklistLogger.warn('lookupTracklist no matched URL', { cacheKey, query, reasoning: match.reasoning });
       return null;
     }
 
+    const scrapeStartedMs = timingStart();
     const scraped = await scrapeTracklist(browser, match.matchedUrl);
+    tracklistLogger.info('lookup phase: scrape', {
+      cacheKey,
+      sourceUrl: scraped.sourceUrl,
+      mixTitle: scraped.mixTitle,
+      ms: timingMs(scrapeStartedMs),
+      ...summarizeTracks(scraped.tracks),
+    });
+
+    const artworkStartedMs = timingStart();
     const tracks = await processTracklistArtwork(cacheKey, scraped.tracks);
+    tracklistLogger.info('lookup phase: artwork', {
+      cacheKey,
+      ms: timingMs(artworkStartedMs),
+      ...summarizeTracks(tracks),
+    });
+
     const result: TracklistResult = {
       sourceUrl: scraped.sourceUrl,
       mixTitle: scraped.mixTitle,
       tracks,
     };
     await writeTracklistCache(cacheKey, result);
-    tracklistLogger.info(`lookupTracklist complete — wrote cache ${cacheKey} (${result.tracks.length} tracks)`);
+    tracklistLogger.info('lookupTracklist complete', {
+      cacheKey,
+      ms: timingMs(lookupStartedMs),
+      ...summarizeResult(result),
+    });
     return result;
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    tracklistLogger.error(`lookupTracklist failed for "${query}": ${message}`);
+    tracklistLogger.error('lookupTracklist failed', {
+      cacheKey,
+      query,
+      ms: timingMs(lookupStartedMs),
+      ...errorFields(err),
+    });
     throw err;
   } finally {
     browser.disconnect();
-    tracklistLogger.debug('Chrome disconnected (attach-only, browser stays open)');
+    tracklistLogger.debug('Chrome disconnected (attach-only, browser stays open)', { cacheKey });
   }
 }

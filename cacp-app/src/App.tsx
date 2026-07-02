@@ -10,6 +10,7 @@ import {
   useCacpTracklist,
   type TracklistResultView,
   type TracklistState,
+  resolveMixLookupIdentity,
 } from './hooks/use-cacp-tracklist.hook';
 
 const DEV_LOOKUP_ARTIST = 'Nora En Pure';
@@ -106,7 +107,7 @@ function TracklistPanel({
         <p className="cacp-tracklist-error">{error}</p>
       ) : null}
 
-      {status === 'idle' ? (
+      {status === 'idle' && !result ? (
         <p className="cacp-tracklist-status">
           Auto-lookup runs when a mix starts playing. Or hit Test Nora #512.
         </p>
@@ -181,11 +182,12 @@ export default function App() {
   };
 
   const handleLookupCurrent = () => {
-    if (!song?.artist || !song.track_name) {
+    const mixIdentity = resolveMixLookupIdentity(song?.artist, song?.track_name);
+    if (!mixIdentity) {
       return;
     }
 
-    lookupTracklist(song.artist, song.track_name);
+    lookupTracklist(mixIdentity.artist, mixIdentity.title);
   };
 
   /**

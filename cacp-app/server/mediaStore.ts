@@ -140,9 +140,16 @@ export class CACPMediaStore {
       }
 
       const { musicPayload, enriched, rawTitle, rawArtist } = plan;
-      mediastoreLogger.info(
-        `Sending to DeskThing: "${musicPayload.track_name}" by "${musicPayload.artist}" (${musicPayload.is_playing ? 'PLAYING' : 'PAUSED'})`,
-      );
+      mediastoreLogger.info('Sending to DeskThing', {
+        track_name: musicPayload.track_name,
+        artist: musicPayload.artist,
+        is_playing: musicPayload.is_playing,
+        progressMs: musicPayload.track_progress,
+        durationMs: musicPayload.track_duration,
+        inMixOrder: enriched.inMixOrder ?? null,
+        rawArtist,
+        rawTitle,
+      });
       if (musicPayload.thumbnail) {
         mediastoreLogger.debug(`Including artwork: ${musicPayload.thumbnail}`);
       }
@@ -254,7 +261,11 @@ export class CACPMediaStore {
 
   /** Re-sends song state after tracklist lookup completes (clears dedupe cache). */
   public handleTracklistReady() {
-    mediastoreLogger.info('Tracklist ready — forcing display refresh');
+    mediastoreLogger.info('Tracklist ready — forcing display refresh', {
+      lastMixArtist: this.extensionData.artist ?? null,
+      lastMixTitle: this.extensionData.title ?? null,
+      progressSeconds: this.extensionData.position ?? null,
+    });
     this.lastSentPayload = null;
     this.sendExtensionDataToDeskThing();
   }
