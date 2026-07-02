@@ -12,6 +12,7 @@
     "build": "npx @deskthing/cli package",
     "setup": "node setup.js",
     "lint": "eslint .",
+    "test:tracklist": "node --import=tsm server/tracklist/test-nora-512.script.ts",
     "preview": "vite preview"
   },
   "dependencies": {

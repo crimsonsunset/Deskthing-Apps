@@ -41,6 +41,11 @@ async function ensureSettingsInitialized(): Promise<void> {
  * @returns {Promise<string | null>} Trimmed API key, or null when unset.
  */
 export async function getOpenRouterApiKey(): Promise<string | null> {
+  const envKey = process.env.OPENROUTER_API_KEY?.trim();
+  if (envKey) {
+    return envKey;
+  }
+
   await ensureSettingsInitialized();
 
   const settings = await DeskThing.getSettings();
