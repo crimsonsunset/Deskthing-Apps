@@ -54,7 +54,9 @@ cacp-extension/src/
 │   ├── soundcloud.js        # SoundCloud implementation — MSE hooks, MediaSession, DOM fallbacks
 │   └── youtube.js           # YouTube implementation
 └── managers/
-    └── site-detector.js     # URL pattern matching, handler registry, createHandlerInstance
+    ├── site-detector.js         # URL pattern matching, handler registry, createHandlerInstance
+    ├── global-media-manager.js  # Tab/priority state — GlobalMediaManager
+    └── websocket-manager.js     # App bridge WS client — BridgeManager
 
 cacp-extension/
 ├── logger-config.json       # Component log levels, colors, emojis
