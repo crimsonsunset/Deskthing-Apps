@@ -4,7 +4,7 @@
 **Branch**: `feature/chrome-audio-control-platform`
 **Base**: `master`
 **Epic**: CACP (Chrome Audio Control Platform)
-**Related**: [`cacp-soundcloud-refactor-and-favorite-cleanup.md`](./cacp-soundcloud-refactor-and-favorite-cleanup.md), [`cacp-popup-react-rewrite.md`](./cacp-popup-react-rewrite.md)
+**Related**: [`cacp-soundcloud-refactor-and-favorite-cleanup.md`](./cacp-soundcloud-refactor-and-favorite-cleanup.md), [`cacp-popup-react-rewrite.md`](./cacp-popup-react-rewrite.md), [`cacp-extension-typescript-migration.md`](./cacp-extension-typescript-migration.md)
 **Estimated effort**: 1 day
 
 ---
@@ -21,7 +21,7 @@ Second file-size cleanup after the `soundcloud.js` split — `cacp.js` (1,019 li
 - Not a content-script behavior change — command dispatch, site detection priority, and reporting cadence are all unchanged; this is a structural move plus one real bug fix (Decision #4).
 - Not a further pass on `soundcloud.js` — that's fully scoped in the sibling doc.
 - Not a change to `background.js`, `websocket-manager.js`, or `global-media-manager.js` — those are separate files with their own (smaller, not-yet-planned) chonker status; not touched here.
-- Not TypeScript — `cacp.js` and its two new sub-controllers stay plain JS. `cacp-popup-react-rewrite.md` migrates the *whole* extension to TypeScript as part of its own scope; once that lands, these three files just need a `.js` → `.ts` rename, not a rewrite. Sequencing this doc before or after that migration is an open call — see that doc's Overview.
+- Not TypeScript — run [`cacp-extension-typescript-migration.md`](./cacp-extension-typescript-migration.md) first; then this split lands as `.ts` renames, not a rewrite. Do not combine TS conversion + composition split on `cacp.js` in one PR.
 
 ---
 
@@ -50,7 +50,7 @@ Second file-size cleanup after the `soundcloud.js` split — `cacp.js` (1,019 li
 - **`background.js`, `websocket-manager.js`, `global-media-manager.js` splits** → separate files, not sized/scoped this pass
 - **Changing site-detection priority logic or reporting cadence** → structural move only, no behavior change
 - **A shared registry object for `cacp.js`'s controllers** → unlike `soundcloud.js`, `SiteActivationController` and `StateReportingController` don't share mutable state with each other; each just needs read access to `currentHandler`/`activeSiteName`, passed as getters, not a shared mutable object
-- **TypeScript conversion of these three files** → deferred to whenever `cacp-popup-react-rewrite.md`'s extension-wide TS migration phase lands; at that point it's a rename, not a rewrite
+- **TypeScript conversion** → [`cacp-extension-typescript-migration.md`](./cacp-extension-typescript-migration.md) must land first; this doc's new files are created as `.ts` if TS migration is done, or `.js` then renamed
 
 ---
 

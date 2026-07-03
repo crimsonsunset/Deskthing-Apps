@@ -5,7 +5,7 @@
 **Base**: `master`
 **Epic**: CACP (Chrome Audio Control Platform)
 **Related**: [`cacp-extension-orchestrator-split.md`](./cacp-extension-orchestrator-split.md), [`cacp-soundcloud-refactor-and-favorite-cleanup.md`](./cacp-soundcloud-refactor-and-favorite-cleanup.md)
-**Estimated effort**: 3–4 days
+**Estimated effort**: 3–4 days (popup) + prerequisite [`cacp-extension-typescript-migration.md`](./cacp-extension-typescript-migration.md) (~1 day)
 
 ---
 
@@ -13,28 +13,30 @@
 
 `popup.js` (881 lines, vanilla JS, `innerHTML` string building) was originally scoped as a same-pattern extraction alongside `cacp.js` (see `cacp-extension-orchestrator-split.md`). It isn't a debug tool — it's an actively-used, actively-growing UI — which changes the right tool for the job entirely: a React rewrite instead of a pure-function extraction.
 
-Rewriting the popup in React is also the forcing function for two things the extension has needed for a while: it has never been TypeScript (unlike every other app in this monorepo — `cacp-app`, and the reference app `set-times-app` used to sanity-check conventions for this doc), and it duplicates cue-matching logic that already lives in `cacp-app/shared/`. Both get fixed here rather than deferred again.
+Rewriting the popup in React is also the forcing function for two things the extension has needed for a while: it has never been TypeScript (see [`cacp-extension-typescript-migration.md`](./cacp-extension-typescript-migration.md)), and it duplicates both cue-matching logic and tracklist/progress UI that already exist in `cacp-app`. Both get fixed here via `cacp-shared` (pure helpers) and `cacp-ui` (shared React components), not deferred again.
 
 **Dependency chain:**
 
 ```
-Phase 1: Extension-wide TypeScript migration (background.js, cacp.js, managers/, sites/, settings/ → .ts)
+Prerequisite: cacp-extension-typescript-migration.md (extension .js → .ts, popup.js excluded)
   ↓
-Phase 2: cacp-shared workspace package (npm workspace #3, cue-matching/formatting helpers move here)
+Phase 1: cacp-shared workspace (cue-matching + formatting helpers)
   ↓
-Phase 3: React + Vite plumbing (popup.html shell, @vitejs/plugin-react, CSS Modules support)
+Phase 2: cacp-ui workspace (shared TracklistPanel, ProgressBar, types — consumed by app + popup)
   ↓
-Phase 4: Hooks (use-popup-global-state.hook.ts, use-popup-commands.hook.ts)
+Phase 3: React + Vite plumbing (popup.html shell, @vitejs/plugin-react)
   ↓
-Phase 5: Components (kebab-case + .component.tsx + colocated .module.css)
+Phase 4: Popup-specific hooks (use-popup-global-state, use-popup-commands, use-popup-debug-log)
   ↓
-Phase 6: Wire up App.tsx, delete popup.js + tracklist-popup.helpers.js
+Phase 5: Popup-only components (header, sources, system-status, debug — compose cacp-ui primitives)
+  ↓
+Phase 6: Wire App, refactor cacp-app to import cacp-ui, delete popup.js + tracklist-popup.helpers.js
 ```
 
 **What this is NOT:**
 
 - Not a change to the popup's actual features or command contract — `chrome.runtime.sendMessage` message types (`control-media`, `like-track`, `lookup-tracklist`, `set-priority-source`, etc.) are unchanged; this is a rendering-layer rewrite, not a feature change.
-- Not a rewrite of `cacp.js`, `background.js`'s *logic*, or the site handlers — Phase 1's TypeScript migration is a `.js` → `.ts` conversion (add types, fix what `tsc --strict` flags), not a restructure. `cacp.js`'s composition split is its own doc (`cacp-extension-orchestrator-split.md`) and can land before or after this Phase 1 — order doesn't matter functionally, just pick one and don't do both at once to keep diffs reviewable.
+- Not a rewrite of `cacp.js`, `background.js`'s *logic*, or the site handlers — TypeScript conversion is [`cacp-extension-typescript-migration.md`](./cacp-extension-typescript-migration.md); `cacp.js`'s composition split is [`cacp-extension-orchestrator-split.md`](./cacp-extension-orchestrator-split.md). Run those on their own schedules; don't combine TS + restructure on the same file in one PR.
 - Not a second UI framework decision — this doc assumes React (already decided in conversation; Preact was considered and rejected because `cacp-app` already has a proven React+Vite+TS config in this exact monorepo to copy from, and bundle size doesn't matter for a locally-loaded popup).
 - Not Tailwind — `set-times-app` (the reference app for these conventions) uses Mantine + CSS Modules, not Tailwind; `cacp-app` uses Tailwind but that's a separate package/build. This doc uses plain CSS Modules per component, no new CSS framework dependency.
 
@@ -45,26 +47,29 @@ Phase 6: Wire up App.tsx, delete popup.js + tracklist-popup.helpers.js
 | # | Question | Decision | Rationale |
 | --- | --- | --- | --- |
 | 1 | UI approach | **React**, not Preact, not vanilla + pure-function extraction | Popup is actively used and expected to grow — needs component boundaries and state management, not string templates. `cacp-app` already has a working React 18 + Vite + TS config in this monorepo to copy from directly; Preact's bundle-size advantage is irrelevant for a locally-loaded popup. |
-| 2 | TypeScript scope | **Whole extension**, not just the new popup files | Every other file in `cacp-extension` (`background.js`, `cacp.js`, `managers/*.js`, `sites/*.js`, `settings/*.js`) stays untyped otherwise, and the popup would be the only `.tsx` island importing from untyped `.js` siblings (`chrome.runtime.sendMessage` payload shapes, `global-media-manager.js`'s state shape) with no type safety at the boundary. Doing it once, extension-wide, is cleaner than converting file-by-file as each one happens to touch the popup. |
+| 2 | TypeScript scope | **Prerequisite doc** — [`cacp-extension-typescript-migration.md`](./cacp-extension-typescript-migration.md) converts the whole extension except `popup.js` (deleted here). Popup `.tsx` imports typed siblings; don't start Phase 3 of this doc until `tsc --noEmit` passes there. |
 | 3 | Component file naming | `kebab-case.component.tsx`, e.g. `source-item.component.tsx` | Checked `set-times-app` (real gold-standard reference — not `ultimateclock`, which was mistakenly dug first and turned out to have no typed-suffix convention at all). `set-times-app`'s dominant style is `PascalCase.component.tsx` but its *newest* files have drifted to `kebab-case.component.tsx` (e.g. `crawl-header-schedule-table.component.tsx`) — which also matches this repo's own kebab-case file-naming rule. Picking the newer, rule-aligned convention over the older dominant one. |
 | 4 | CSS approach | **CSS Modules**, colocated per component (`source-item.module.css` next to `source-item.component.tsx`) | Matches `set-times-app`'s actual pattern (`Button.component.tsx` + `Button.module.css`, always colocated, always Modules — never global CSS outside `globals.css`). More faithful to the gold standard than one big `app.css`, and gives each component's styles the same scoping/no-collision guarantee `.module.css` provides everywhere else in the reference app. |
-| 5 | Cross-package shared helpers | New `cacp-shared` npm workspace package (3rd workspace alongside `cacp-app`/`cacp-extension`, already configured at the repo root) | The repo root `package.json` already declares `"workspaces": ["cacp-app", "cacp-extension"]` — adding a third workspace is zero new tooling, not a new pattern. `findCurrentTracklistTrack`/`formatCueSeconds`/`getTrackDurationSeconds` currently live in both `cacp-app/shared/tracklist-cue-matching.ts` and `cacp-extension/src/tracklist-popup.helpers.js` as near-duplicates; both packages depend on `cacp-shared` via the workspace protocol instead. `escapeHtml` does **not** move — it becomes dead code once JSX handles escaping, and gets deleted, not shared. |
-| 6 | Hook naming | `use-popup-{domain}.hook.ts`, mirroring `cacp-app`'s `use-cacp-{domain}.hook.ts` | Confirmed against `set-times-app`'s newest hook files (`use-crawl-stream.hook.ts`, `use-post-crawl-refresh.hook.ts`) — singular, `use-`-prefixed, `.hook.ts` suffix is the current direction there too, not just a `cacp-app` idiosyncrasy. Older `domain.hooks.ts` (plural, unprefixed) files in that repo are the pattern being migrated away from — don't copy the old one. |
+| 5 | Cross-package shared helpers | New `cacp-shared` npm workspace (4th top-level workspace entry) | Pure TS only — no React. `findCurrentTracklistTrack`, `formatCueSeconds`, `getTrackDurationSeconds` move here from `cacp-app/shared/` and `tracklist-popup.helpers.js`. Both `cacp-app` and `cacp-extension` depend via workspace protocol. |
+| 6 | Cross-package shared UI | New `cacp-ui` npm workspace — shared React components + colocated CSS Modules | `App.tsx` already has an inline `TracklistPanel` (~150 lines) and progress-bar markup duplicated in `popup.js`. Extract once into `cacp-ui`: `tracklist-panel.component.tsx`, `progress-bar.component.tsx`, shared prop types. Popup-only chrome (sources list, debug panel, extension header) stays in `cacp-extension`. `cacp-app` drops inline tracklist/progress JSX and imports from `cacp-ui`. Both packages already use React 18 + Vite — no new framework. |
+| 7 | Hook naming | `use-popup-{domain}.hook.ts`, mirroring `cacp-app`'s `use-cacp-{domain}.hook.ts` | Confirmed against `set-times-app`'s newest hook files (`use-crawl-stream.hook.ts`, `use-post-crawl-refresh.hook.ts`) — singular, `use-`-prefixed, `.hook.ts` suffix is the current direction there too, not just a `cacp-app` idiosyncrasy. Older `domain.hooks.ts` (plural, unprefixed) files in that repo are the pattern being migrated away from — don't copy the old one. |
 
 ---
 
 ## What's In Scope
 
-- Extension-wide `.js` → `.ts` conversion: `background.js`, `cacp.js`, `managers/site-detector.js`, `managers/global-media-manager.js`, `managers/websocket-manager.js`, `sites/base-handler.js`, `sites/soundcloud.js` (+ its planned sub-controllers from the sibling doc), `sites/youtube.js`, `sites/_template.js`, `settings/settings.js`, `main-world-logger.js`, `logger-bridge.js` (if the orchestrator-split doc lands first)
-- `tsconfig.json`, `tsconfig.node.json` (for a build-time script if any), `@vitejs/plugin-react`, `eslint.config.js` for `cacp-extension` — mirrored from `cacp-app`'s working config
-- New `cacp-shared` npm workspace: `packages/cacp-shared/` (or root-level `cacp-shared/`, matching the flat top-level workspace layout `cacp-app`/`cacp-extension` already use) with `tracklist-cue-matching.ts` (moved, not duplicated) and a barrel `index.ts`
-- New popup component tree under `cacp-extension/src/popup/` (see Architecture)
+- **Prerequisite:** [`cacp-extension-typescript-migration.md`](./cacp-extension-typescript-migration.md) complete (`popup.js` still excluded until deleted here)
+- New `cacp-shared/` workspace: pure TS helpers (see Architecture)
+- New `cacp-ui/` workspace: shared React components extracted from `cacp-app/src/App.tsx` + designed to match popup tracklist/progress behavior
+- Refactor `cacp-app/src/App.tsx` to import `TracklistPanel` / `ProgressBar` from `cacp-ui` (Tailwind/global classes in app become thin wrappers or theme overrides — see Phase 2)
+- New popup component tree under `cacp-extension/src/popup/` — popup-only UI; composes `cacp-ui` primitives
 - `popup.html` slimmed to a mount-point shell
-- `manifest.json`: no change expected (`default_popup: "popup.html"` path stays)
+- `@vitejs/plugin-react` in `cacp-extension` (TS config already exists from prerequisite doc)
 
 ## What's Out of Scope
 
-- **`background.js`/`cacp.js`/site handlers' internal logic changes** → Phase 1 is a type-safety pass, not a restructure; their composition splits are separate docs
+- **Extension `.js` → `.ts` conversion** → [`cacp-extension-typescript-migration.md`](./cacp-extension-typescript-migration.md)
+- **`background.js`/`cacp.js`/site handlers' internal logic changes** → orchestrator / soundcloud split docs
 - **Tailwind for the extension** → rejected, Decision #4; CSS Modules only
 - **A monorepo-wide build tool change** (Turborepo, Nx, etc.) → npm workspaces already do the job needed here; not introducing new tooling for a 3-file shared package
 - **Migrating `cacp-app`'s own file/directory layout to fully match `set-times-app`** → out of scope; this doc only pulls in the specific conventions it needs for new files it's creating, not a repo-wide retrofit
@@ -74,19 +79,94 @@ Phase 6: Wire up App.tsx, delete popup.js + tracklist-popup.helpers.js
 
 ## Architecture
 
-### `cacp-shared` workspace (planned shape)
+### Workspace layout (planned shape)
 
 ```
 DeskThing-Apps/
-├── cacp-app/                              # existing workspace
-├── cacp-extension/                        # existing workspace
-├── cacp-shared/                           # NEW workspace — 3rd entry in root package.json's "workspaces"
-│   ├── package.json                       # name: "cacp-shared", no build step, plain TS source
-│   ├── tracklist-cue-matching.ts          # moved from cacp-app/shared/, findCurrentTracklistTrack
-│   ├── tracklist-formatting.ts            # moved from tracklist-popup.helpers.js: formatCueSeconds, getTrackDurationSeconds
-│   └── index.ts                           # barrel export
-└── package.json                           # "workspaces": ["cacp-app", "cacp-extension", "cacp-shared"]
+├── cacp-app/                              # depends on cacp-shared + cacp-ui
+├── cacp-extension/                        # depends on cacp-shared + cacp-ui
+├── cacp-shared/                           # pure TS — no React peerDep
+│   ├── package.json
+│   ├── tracklist-cue-matching.ts          # findCurrentTracklistTrack
+│   ├── tracklist-formatting.ts            # formatCueSeconds, getTrackDurationSeconds
+│   └── index.ts
+├── cacp-ui/                               # shared React components
+│   ├── package.json                       # peerDependencies: react, react-dom
+│   ├── tracklist-panel.component.tsx
+│   ├── tracklist-panel.module.css
+│   ├── progress-bar.component.tsx
+│   ├── progress-bar.module.css
+│   ├── tracklist-panel.types.ts           # props shared by app + popup
+│   └── index.ts
+└── package.json                           # workspaces: [..., "cacp-shared", "cacp-ui"]
 ```
+
+```typescript
+// cacp-ui/package.json
+{
+  "name": "cacp-ui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./index.ts",
+  "peerDependencies": {
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
+  },
+  "dependencies": {
+    "cacp-shared": "*"
+  }
+}
+```
+
+```typescript
+// cacp-app + cacp-extension package.json additions
+"dependencies": {
+  "cacp-shared": "*",
+  "cacp-ui": "*"
+}
+```
+
+### `cacp-ui` component contract (planned shape)
+
+Extract from [`cacp-app/src/App.tsx`](../../cacp-app/src/App.tsx) inline `TracklistPanel` and progress-bar click-to-seek markup. Props are **callback-driven** — no DeskThing or `chrome.runtime` imports inside `cacp-ui`.
+
+```typescript
+// cacp-ui/tracklist-panel.types.ts
+export type TracklistPanelTrack = {
+  order: number;
+  cueSeconds: number | null;
+  artist: string;
+  title: string;
+  rowId?: string;
+};
+
+export type TracklistPanelProps = {
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  result: { mixTitle: string; tracks: TracklistPanelTrack[] } | null;
+  error?: string | null;
+  progressMs?: number | null;
+  mixDurationSeconds?: number | null;
+  favoriteStatus?: 'idle' | 'loading' | 'ready' | 'error';
+  /** Popup hides dev-only lookup; app shows both — controlled via optional slots */
+  lookupActions?: React.ReactNode;
+  onSeekToTrack?: (track: TracklistPanelTrack) => void;
+  onFavoriteTrack?: (rowId: string) => void;
+};
+```
+
+```typescript
+// cacp-ui/progress-bar.component.tsx — shared click-to-seek
+export type ProgressBarProps = {
+  progressMs: number;
+  durationMs: number;
+  onSeek: (targetMs: number) => void;
+  className?: string;
+  height?: number;
+};
+```
+
+**Styling split:** `cacp-ui` ships default CSS Modules (dark popup-friendly baseline). `cacp-app` may pass `className` or wrap in a thin layout shell; do not duplicate tracklist row markup in either consumer after Phase 2.
 
 ```typescript
 // cacp-shared/package.json
@@ -99,14 +179,9 @@ DeskThing-Apps/
 }
 ```
 
-```typescript
-// cacp-app and cacp-extension package.json additions
-"dependencies": {
-  "cacp-shared": "*"   // npm workspace protocol — resolves to the local package
-}
-```
-
 ### Popup component tree (planned shape)
+
+Popup-only UI — **composes `cacp-ui`**, does not reimplement tracklist/progress.
 
 ```
 cacp-extension/
@@ -117,22 +192,20 @@ cacp-extension/
 │   │   ├── app.component.tsx               # ~90 lines — composes header/status/controls/sources/tracklist/debug
 │   │   └── app.module.css                  # shared layout-level styles (body, root container)
 │   │
-│   ├── components/
-│   │   ├── popup-header.component.tsx      # ~20 lines
+│   ├── components/                         # popup-only — NOT duplicated in cacp-ui
+│   │   ├── popup-header.component.tsx
 │   │   ├── popup-header.module.css
-│   │   ├── system-status.component.tsx     # ~80 lines — now-playing, artwork, progress-bar
+│   │   ├── system-status.component.tsx     # now-playing shell; uses cacp-ui ProgressBar
 │   │   ├── system-status.module.css
-│   │   ├── global-controls.component.tsx   # ~45 lines — prev/play/pause/next/like
+│   │   ├── global-controls.component.tsx
 │   │   ├── global-controls.module.css
-│   │   ├── sources-list.component.tsx      # ~30 lines — maps sources or renders empty state
-│   │   ├── source-item.component.tsx       # ~100 lines — one tab's transport/like/seek/set-priority
+│   │   ├── sources-list.component.tsx
+│   │   ├── source-item.component.tsx       # per-tab chrome; uses cacp-ui ProgressBar
 │   │   ├── source-item.module.css
-│   │   ├── no-sources-empty.component.tsx  # ~20 lines
-│   │   ├── tracklist-panel.component.tsx   # ~90 lines — lookup button, states, cue rows
-│   │   ├── tracklist-panel.module.css
-│   │   ├── progress-bar.component.tsx      # ~40 lines — shared click-to-seek bar
-│   │   ├── progress-bar.module.css
-│   │   ├── debug-log-panel.component.tsx   # ~60 lines — toggle, log list, copy
+│   │   ├── no-sources-empty.component.tsx
+│   │   ├── tracklist-shell.component.tsx   # thin wrapper: chrome.runtime commands + cacp-ui TracklistPanel
+│   │   ├── tracklist-shell.module.css
+│   │   ├── debug-log-panel.component.tsx
 │   │   └── debug-log-panel.module.css
 │   │
 │   ├── hooks/
@@ -141,11 +214,11 @@ cacp-extension/
 │   │   └── use-popup-debug-log.hook.ts     # ~50 lines — ring buffer, copy
 │   │
 │   └── types/
-│       └── popup-global-state.types.ts     # GlobalState, MediaSource, TracklistState shapes
+│       └── popup-global-state.types.ts     # extension-specific; tracklist row shapes import from cacp-ui
 │
-├── vite.config.ts                          # + react() plugin (renamed from .js)
-├── tsconfig.json                           # NEW — mirrors cacp-app's, types: ["chrome"]
-└── eslint.config.js                        # NEW — mirrors cacp-app's + chrome globals
+├── vite.config.ts                          # + react() plugin (from prerequisite TS migration)
+├── tsconfig.json                           # from cacp-extension-typescript-migration.md
+└── eslint.config.js
 ```
 
 ### Hook shape (planned)
@@ -193,110 +266,106 @@ export function SourceItem({ source, isPriority, enrichedDisplay, onCommand }: S
 
 | File | Purpose | Phase |
 | --- | --- | --- |
-| `cacp-shared/package.json`, `cacp-shared/tracklist-cue-matching.ts`, `cacp-shared/tracklist-formatting.ts`, `cacp-shared/index.ts` | New workspace package for cross-package cue-matching/formatting logic | 2 |
-| `cacp-extension/tsconfig.json`, `cacp-extension/eslint.config.js` | TS + lint config, mirrored from `cacp-app` | 1 |
+| `cacp-shared/package.json`, `tracklist-cue-matching.ts`, `tracklist-formatting.ts`, `index.ts` | Pure TS shared helpers | 1 |
+| `cacp-ui/package.json`, `tracklist-panel.component.tsx`, `progress-bar.component.tsx`, `*.module.css`, `tracklist-panel.types.ts`, `index.ts` | Shared React UI | 2 |
 | `cacp-extension/src/popup/main.tsx`, `app.component.tsx`, `app.module.css` | Popup root | 3 |
-| `cacp-extension/src/components/*.component.tsx` + `*.module.css` (9 components, see Architecture) | Popup UI | 5 |
-| `cacp-extension/src/hooks/use-popup-global-state.hook.ts`, `use-popup-commands.hook.ts`, `use-popup-debug-log.hook.ts` | Popup state + command logic | 4 |
-| `cacp-extension/src/types/popup-global-state.types.ts` | Shared popup type definitions | 4 |
+| `cacp-extension/src/components/*.component.tsx` (popup-only, 7 components — see Architecture) | Popup chrome | 5 |
+| `cacp-extension/src/hooks/use-popup-*.hook.ts` (3 hooks) | Popup state + commands | 4 |
+| `cacp-extension/src/types/popup-global-state.types.ts` | Extension-specific state types | 4 |
 
 ## Files to Modify
 
 | File | Change | Phase |
 | --- | --- | --- |
-| [`DeskThing-Apps/package.json`](../../package.json) | Add `cacp-shared` to `"workspaces"` | 2 |
-| [`cacp-app/shared/tracklist-cue-matching.ts`](../../cacp-app/shared/tracklist-cue-matching.ts) | Delete — content moves to `cacp-shared/` | 2 |
-| [`cacp-app/package.json`](../../cacp-app/package.json) | Depend on `cacp-shared` via workspace protocol; update imports from `@shared` to `cacp-shared` | 2 |
-| [`cacp-extension/package.json`](../../cacp-extension/package.json) | Add `react`, `react-dom`, `@vitejs/plugin-react`, `typescript`, `@types/react`, `@types/react-dom`, `@types/chrome`, `cacp-shared`; eslint deps mirrored from `cacp-app` | 1, 3 |
-| [`cacp-extension/vite.config.js`](../../cacp-extension/vite.config.js) → `.ts` | Add `react()` plugin | 1, 3 |
-| [`cacp-extension/background.js`](../../cacp-extension/background.js) → `.ts` | Type conversion only | 1 |
-| [`cacp-extension/src/cacp.js`](../../cacp-extension/src/cacp.js) → `.ts` | Type conversion only (coordinate with `cacp-extension-orchestrator-split.md`) | 1 |
-| [`cacp-extension/src/managers/*.js`](../../cacp-extension/src/managers/) → `.ts` | Type conversion only | 1 |
-| [`cacp-extension/src/sites/*.js`](../../cacp-extension/src/sites/) → `.ts` | Type conversion only (coordinate with `cacp-soundcloud-refactor-and-favorite-cleanup.md`) | 1 |
-| [`cacp-extension/popup.html`](../../cacp-extension/popup.html) | Replace body with `<div id="root">`, point script at `main.tsx` | 3 |
-| [`cacp-extension/src/popup.js`](../../cacp-extension/src/popup.js) | Delete once `App.tsx` is wired up | 6 |
-| [`cacp-extension/src/tracklist-popup.helpers.js`](../../cacp-extension/src/tracklist-popup.helpers.js) | Delete — `escapeHtml` no longer needed, matching functions move to `cacp-shared` | 6 |
+| [`DeskThing-Apps/package.json`](../../package.json) | Add `cacp-shared`, `cacp-ui` to `"workspaces"` | 1 |
+| [`cacp-app/shared/tracklist-cue-matching.ts`](../../cacp-app/shared/tracklist-cue-matching.ts) | Delete — moves to `cacp-shared/` | 1 |
+| [`cacp-app/package.json`](../../cacp-app/package.json) | Depend on `cacp-shared`, `cacp-ui`; drop `@shared` alias for cue-matching | 1, 2 |
+| [`cacp-app/src/App.tsx`](../../cacp-app/src/App.tsx) | Remove inline `TracklistPanel` + progress markup; import from `cacp-ui` | 2 |
+| [`cacp-app/src/hooks/use-cacp-tracklist.hook.ts`](../../cacp-app/src/hooks/use-cacp-tracklist.hook.ts) | Import formatting/cue-matching from `cacp-shared` | 1 |
+| [`cacp-extension/package.json`](../../cacp-extension/package.json) | Add `react`, `react-dom`, `@vitejs/plugin-react`, `cacp-shared`, `cacp-ui` | 2, 3 |
+| [`cacp-extension/vite.config.ts`](../../cacp-extension/vite.config.ts) | Add `react()` plugin | 3 |
+| [`cacp-extension/popup.html`](../../cacp-extension/popup.html) | Mount point + `main.tsx` script | 3 |
+| [`cacp-extension/src/popup.js`](../../cacp-extension/src/popup.js) | Delete | 6 |
+| [`cacp-extension/src/tracklist-popup.helpers.js`](../../cacp-extension/src/tracklist-popup.helpers.js) | Delete | 6 |
 
 ---
 
 ## Phasing
 
-### Phase 1: Extension-wide TypeScript migration (~1 day)
+**Prerequisite:** Complete [`cacp-extension-typescript-migration.md`](./cacp-extension-typescript-migration.md) first.
 
-- Add `cacp-extension/tsconfig.json` (mirror `cacp-app`'s: `jsx: "react-jsx"`, `strict: true`, add `"types": ["chrome"]`)
-- Add `cacp-extension/eslint.config.js` (mirror `cacp-app`'s flat config + `@types/chrome` globals)
-- Rename every `.js` file under `cacp-extension/src/` (and `background.js`) to `.ts`, fix whatever `tsc --strict` flags (mostly: `chrome.*` API types via `@types/chrome`, `event.error`/message payload shapes)
-- No behavior changes — this is a type-safety pass
+### Phase 1: `cacp-shared` workspace (~3h)
 
-**Outcome:** `cd cacp-extension && npx tsc --noEmit` passes with zero errors. `npm run build` still produces a working extension zip. Manual smoke test: loading a SoundCloud tab still works exactly as before.
+- Create `cacp-shared/` at repo root; add to root `package.json` `"workspaces"`
+- Move `findCurrentTracklistTrack` from `cacp-app/shared/` → `cacp-shared/tracklist-cue-matching.ts`
+- Move `formatCueSeconds` / `getTrackDurationSeconds` from `tracklist-popup.helpers.js` → `cacp-shared/tracklist-formatting.ts`
+- Both packages add `"cacp-shared": "*"`; update `cacp-app` hook imports; delete `cacp-app/shared/` cue-matching file
+
+**Outcome:** One definition of cue-matching/formatting helpers. Both packages build.
 
 ---
 
-### Phase 2: `cacp-shared` workspace package (~3h)
+### Phase 2: `cacp-ui` workspace + `cacp-app` refactor (~5h)
 
-- Create `cacp-shared/` at the repo root, add to root `package.json`'s `"workspaces"`
-- Move (not copy) `findCurrentTracklistTrack` from `cacp-app/shared/tracklist-cue-matching.ts` into `cacp-shared/tracklist-cue-matching.ts`
-- Move `formatCueSeconds`/`getTrackDurationSeconds` from `cacp-extension/src/tracklist-popup.helpers.js` into `cacp-shared/tracklist-formatting.ts` (converted to TS)
-- Both `cacp-app` and `cacp-extension` add `"cacp-shared": "*"` and run `npm install` at the root to link the workspace
-- Update `cacp-app`'s `use-cacp-tracklist.hook.ts` and `tracklist-current-track.helpers.ts` imports from `@shared` to `cacp-shared`
+- Create `cacp-ui/` with `TracklistPanel` + `ProgressBar` extracted from inline `App.tsx` markup
+- CSS Modules in `cacp-ui`; props are callback-driven (no DeskThing/chrome imports)
+- Refactor `cacp-app/src/App.tsx` to compose `cacp-ui` components; keep app-specific layout/wiring in App
+- Add `cacp-ui` to workspaces; both `cacp-app` and `cacp-extension` depend on it
+- `npm run build` in `cacp-app` must pass before popup work starts
 
-**Outcome:** `grep -rn "function findCurrentTracklistTrack"` returns exactly one hit, in `cacp-shared/`. Both `cacp-app` and `cacp-extension` build successfully importing from the shared workspace package.
+**Outcome:** Tracklist + progress UI lives in one package. Emulator app looks/behaves the same. Popup rewrite imports the same components instead of reimplementing rows/progress bars.
 
 ---
 
 ### Phase 3: React + Vite plumbing (~2h)
 
-- Add `@vitejs/plugin-react` to `vite.config.ts` (renamed from `.js`)
-- Slim `popup.html` to a `<div id="root">` mount point + `main.tsx` script tag
-- Confirm CSS Modules work out of the box with Vite (they do, zero config needed)
+- Add `@vitejs/plugin-react` to `cacp-extension/vite.config.ts`
+- Slim `popup.html` to `<div id="root">` + `main.tsx`
+- Confirm CSS Modules + workspace resolution for `cacp-ui` in extension Vite build
 
-**Outcome:** `npm run dev` in `cacp-extension` serves an empty React root in the popup with no console errors. `npm run build` produces a valid crx bundle.
-
----
-
-### Phase 4: Hooks (~4h)
-
-- `use-popup-global-state.hook.ts`: polling + `popup-*` push-listener logic moved from `CACPPopup.refreshGlobalState`/`startPeriodicUpdates`
-- `use-popup-commands.hook.ts`: every `sendX` method moved verbatim, same message shapes
-- `use-popup-debug-log.hook.ts`: ring buffer + `copyLogs`, moved from `CACPPopup.log`/`updateLogsDisplay`/`copyLogs`
-
-**Outcome:** Hooks compile and pass a quick `node:test`-based sanity check on any pure logic inside them (e.g. `hasStateChanged`'s diffing). Not full coverage — matches repo's no-unit-test-suite convention, this is a light sanity check only.
+**Outcome:** Empty React root in popup; `npm run build` produces valid crx.
 
 ---
 
-### Phase 5: Components (~6h)
+### Phase 4: Popup hooks (~4h)
 
-- Build all 9 components per the Architecture tree, each with a colocated `.module.css`
-- Every dynamic text render relies on JSX's automatic escaping — no `escapeHtml()` calls anywhere (this categorically closes the injection gap found during the earlier popup audit, rather than requiring every render function to remember to call it)
+- `use-popup-global-state.hook.ts`, `use-popup-commands.hook.ts`, `use-popup-debug-log.hook.ts`
+- Move logic verbatim from `CACPPopup`; same `chrome.runtime.sendMessage` shapes
 
-**Outcome:** Popup renders pixel-equivalent to the current vanilla version for source list, now-playing status, and tracklist panel. Manually testing a track title containing `<b>test</b>` renders literal text, not bold — confirms the escaping fix.
+**Outcome:** Hooks compile; extension typecheck passes.
 
 ---
 
-### Phase 6: Wire up `App.tsx`, delete old files (~2h)
+### Phase 5: Popup-only components (~4h)
 
-- Compose all components + hooks in `app.component.tsx`
-- Delete `popup.js` and `tracklist-popup.helpers.js`
-- Full manual pass across every popup interaction (see Verification checklist)
+- Build popup chrome components (header, sources, system-status, debug) — **not** tracklist/progress (those come from `cacp-ui`)
+- `tracklist-shell.component.tsx` wires `use-popup-commands` + `cacp-ui/TracklistPanel`
+- JSX auto-escaping replaces `escapeHtml`
 
-**Outcome:** `cacp-extension/src/popup.js` no longer exists. Every popup interaction (global transport, per-source transport, like, lookup, set-priority, seek, debug log copy) works identically to the pre-rewrite popup.
+**Outcome:** Popup renders equivalently; `<b>test</b>` in titles shows as literal text.
+
+---
+
+### Phase 6: Wire up, delete legacy (~2h)
+
+- Compose `app.component.tsx`; delete `popup.js` + `tracklist-popup.helpers.js`
+- Full manual pass (verification checklist)
+
+**Outcome:** No `popup.js`. App + popup share `cacp-ui` tracklist/progress components.
 
 ---
 
 ## Verification checklist (manual)
 
-- [ ] `cd cacp-extension && npx tsc --noEmit` passes with zero errors (Phase 1)
-- [ ] `grep -rn "function findCurrentTracklistTrack"` returns exactly one hit, in `cacp-shared/` (Phase 2)
-- [ ] `npm run dev` in `cacp-extension` serves the popup with no console errors (Phase 3)
-- [ ] Popup: global play/pause/next/previous/like/lookup all work
-- [ ] Popup: per-source transport, like (standalone vs in-mix routing), set-priority all work
-- [ ] Popup: global + per-source progress-bar click-to-seek both work
-- [ ] Popup: tracklist panel renders loading/error/empty/ready states correctly, cue-row click seeks
-- [ ] Popup: a track title containing `<b>test</b>` (rename a tab title via devtools) renders as literal text, not bold
-- [ ] Popup: debug log panel toggle + copy-to-clipboard work
-- [ ] `cd cacp-extension && npm run build` succeeds and produces a valid crx bundle
-- [ ] `cd cacp-extension && npm run lint` passes with no new errors
-- [ ] `cd cacp-app && npm run build` still succeeds after the `cacp-shared` import change
+- [ ] Prerequisite: `cd cacp-extension && npm run typecheck` passes ([`cacp-extension-typescript-migration.md`](./cacp-extension-typescript-migration.md))
+- [ ] `grep -rn "function findCurrentTracklistTrack"` returns one hit in `cacp-shared/` (Phase 1)
+- [ ] `grep -rn "function TracklistPanel"` — zero inline definitions in `cacp-app/src/App.tsx`; import from `cacp-ui` (Phase 2)
+- [ ] `cd cacp-app && npm run build` succeeds after `cacp-ui` refactor (Phase 2)
+- [ ] `npm run dev` in `cacp-extension` serves popup with no console errors (Phase 3)
+- [ ] Popup: global/per-source transport, like, lookup, seek, tracklist cue rows (Phase 6)
+- [ ] App emulator: tracklist panel + progress seek unchanged after `cacp-ui` extraction (Phase 2)
+- [ ] Track title `<b>test</b>` renders as literal text in popup (Phase 5)
+- [ ] `cd cacp-extension && npm run build` + lint pass
 
 ---
 
@@ -309,19 +378,21 @@ export function SourceItem({ source, isPriority, enrichedDisplay, onCommand }: S
 | [`cacp-app/shared/tracklist-cue-matching.ts`](../../cacp-app/shared/tracklist-cue-matching.ts) | Gets deleted; content moves to `cacp-shared` |
 | [`cacp-app/src/App.tsx`](../../cacp-app/src/App.tsx) | React/hooks pattern reference for this rewrite |
 | [`cacp-app/src/hooks/use-cacp-music.hook.ts`](../../cacp-app/src/hooks/use-cacp-music.hook.ts) | Hook naming/shape reference (Decision #6) |
-| [`cacp-app/vite.config.ts`](../../cacp-app/vite.config.ts), [`cacp-app/tsconfig.json`](../../cacp-app/tsconfig.json), [`cacp-app/eslint.config.js`](../../cacp-app/eslint.config.js) | Config templates for `cacp-extension`'s new TS/React/lint setup |
-| `/Users/joe/Desktop/Repos/Personal/set-times-app` (sibling repo, outside this monorepo) | Gold-standard reference for `.component.tsx`/CSS-Modules/hook-naming conventions checked in this doc — NOT `ultimateclock`, which was mistakenly dug first |
-| [`DeskThing-Apps/package.json`](../../package.json) | Root npm workspaces config — gets a 3rd entry (`cacp-shared`) |
-| [`cacp-extension-orchestrator-split.md`](./cacp-extension-orchestrator-split.md) | Sibling doc for `cacp.js` — its files get renamed `.ts` once Phase 1 here lands |
-| [`cacp-soundcloud-refactor-and-favorite-cleanup.md`](./cacp-soundcloud-refactor-and-favorite-cleanup.md) | Sibling doc for `soundcloud.js` — same `.ts` rename note applies |
+| [`cacp-app/src/App.tsx`](../../cacp-app/src/App.tsx) | Inline `TracklistPanel` + progress markup — source for `cacp-ui` extraction |
+| [`cacp-ui/`](../../cacp-ui/) | Shared tracklist + progress components (planned) |
+| [`cacp-extension-typescript-migration.md`](./cacp-extension-typescript-migration.md) | Prerequisite — extension TS before popup `.tsx` |
+| [`DeskThing-Apps/package.json`](../../package.json) | Root workspaces — gets `cacp-shared` + `cacp-ui` |
+| [`cacp-extension-orchestrator-split.md`](./cacp-extension-orchestrator-split.md) | Run on `.ts` after TS migration |
+| [`cacp-soundcloud-refactor-and-favorite-cleanup.md`](./cacp-soundcloud-refactor-and-favorite-cleanup.md) | Done — sub-controllers converted in TS migration Phase 3 |
 
 ---
 
 ## Related Documentation
 
-- [`cacp-extension-orchestrator-split.md`](./cacp-extension-orchestrator-split.md) — `cacp.js` split, split out of the same original doc as this one
-- [`cacp-soundcloud-refactor-and-favorite-cleanup.md`](./cacp-soundcloud-refactor-and-favorite-cleanup.md) — `soundcloud.js` split; its new files also get the `.ts` rename once Phase 1 here lands
-- [`docs/cacp/architecture.md`](../cacp/architecture.md) — overall CACP system architecture; gets a file-structure update once this ships
+- [`cacp-extension-typescript-migration.md`](./cacp-extension-typescript-migration.md) — **prerequisite** — extension-wide TS (popup excluded)
+- [`cacp-extension-orchestrator-split.md`](./cacp-extension-orchestrator-split.md) — `cacp.js` split; run after TS migration
+- [`cacp-soundcloud-refactor-and-favorite-cleanup.md`](./cacp-soundcloud-refactor-and-favorite-cleanup.md) — done; sub-controllers typed in TS migration
+- [`docs/cacp/architecture.md`](../cacp/architecture.md) — update file tree when this ships
 
 ---
 
