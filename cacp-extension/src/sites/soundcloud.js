@@ -463,7 +463,6 @@ export class SoundCloudHandler extends SiteHandler {
         displayedDuration: this.getDisplayedDuration(),
       };
       this.log.info('[CACP-Seek] soundcloud post-seek check', postCheck);
-      console.log('[CACP-SEEK-DEBUG] post-seek check', postCheck);
     }, 300);
   }
 
@@ -789,7 +788,6 @@ export class SoundCloudHandler extends SiteHandler {
     };
 
     this.log.info('[CACP-Seek] soundcloud seek click dispatched', diagnostics);
-    console.log('[CACP-SEEK-DEBUG] click dispatched', { time, duration, ...diagnostics });
     return { success: true, action: 'seek', time, method: 'pointer-click', ...diagnostics };
   }
 
@@ -912,7 +910,7 @@ export class SoundCloudHandler extends SiteHandler {
       pixelSeconds: Number.isFinite(pixelSeconds) ? Math.round(pixelSeconds * 100) / 100 : null,
       reachedTolerance: actual != null && Math.abs(time - actual) <= toleranceSeconds,
     };
-    console.log('[CACP-SEEK-DEBUG] fine-tune complete', { time, duration, ...fineTuneResult });
+    this.log.info('[CACP-Seek] soundcloud fine-tune complete', { time, duration, ...fineTuneResult });
     return fineTuneResult;
   }
 

@@ -50,7 +50,11 @@ export class BridgeManager {
     if (this.pingIntervalId) clearInterval(this.pingIntervalId);
     this.pingIntervalId = setInterval(() => {
       if (this.wsConnected && this.ws) {
-        try { this.ws.send(JSON.stringify({ type: 'ping', timestamp: Date.now() })); } catch {}
+        try {
+          this.ws.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+        } catch (err) {
+          backgroundLogger.trace('Failed to send ping', { error: err?.message });
+        }
       }
     }, PING_INTERVAL_MS);
   }
@@ -93,7 +97,9 @@ export class BridgeManager {
             version: chrome.runtime.getManifest().version,
             ts: Date.now()
           }));
-        } catch {}
+        } catch (err) {
+          backgroundLogger.trace('Failed to send connection handshake', { error: err?.message });
+        }
         this.startPingInterval();
         this.pushPriority(this.getCurrentPriority());
       });
@@ -158,10 +164,8 @@ export class BridgeManager {
             case 'seek':
               if (typeof msg.time === 'number') {
                 backgroundLogger.info('[CACP-Seek] bridge WS seek received', { time: msg.time, id: msg.id });
-                console.log('[CACP-SEEK-DEBUG] bridge WS seek received', { time: msg.time, id: msg.id });
                 commandResult = await this.sendControlCommand('seek', null, msg.time);
                 backgroundLogger.info('[CACP-Seek] bridge WS seek result', { time: msg.time, result: commandResult });
-                console.log('[CACP-SEEK-DEBUG] bridge WS seek result', { time: msg.time, result: commandResult });
               } else {
                 backgroundLogger.warn('[CACP-Seek] bridge WS seek dropped — msg.time missing or not a number', { msg });
                 commandResult = { success: false, error: 'msg.time missing or not a number' };
@@ -265,7 +269,9 @@ export class BridgeManager {
     try {
       this.ws.send(JSON.stringify(mediaData));
       this.ws.send(JSON.stringify(timeupdate));
-    } catch {}
+    } catch (err) {
+      backgroundLogger.trace('Failed to push priority to bridge', { error: err?.message });
+    }
   }
 }
 

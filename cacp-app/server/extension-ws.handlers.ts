@@ -67,6 +67,8 @@ export type ExtensionDataState = {
   site?: string;
   sourceId?: string | number;
   lastUpdate?: number;
+  /** Timestamp of the last "Progress: Xs/Ys" debug log, gating log frequency independently of lastUpdate. */
+  lastProgressLogAt?: number;
   /** Set by handleSeek; suppresses stale backward timeupdate reports until the seek settles. */
   pendingSeek?: { targetSeconds: number; requestedAt: number } | null;
 };
@@ -281,6 +283,8 @@ export async function handleExtensionWsMessage(
           message.isPlaying !== ctx.extensionData.isPlaying;
 
         if (timeChanged) {
+          const previousIsPlaying = ctx.extensionData.isPlaying;
+
           if (message.currentTime !== undefined) {
             ctx.extensionData.position = message.currentTime;
           }
@@ -291,14 +295,14 @@ export async function handleExtensionWsMessage(
             ctx.extensionData.isPlaying = message.isPlaying;
           }
 
-          ctx.extensionData.lastUpdate = Date.now();
-
           const now = Date.now();
-          const timeSinceLastLog = now - (ctx.extensionData.lastUpdate || 0);
-          const shouldLog =
-            message.isPlaying !== ctx.extensionData.isPlaying || timeSinceLastLog > 10000;
+          ctx.extensionData.lastUpdate = now;
+
+          const timeSinceLastLog = now - (ctx.extensionData.lastProgressLogAt ?? 0);
+          const shouldLog = message.isPlaying !== previousIsPlaying || timeSinceLastLog > 10000;
 
           if (shouldLog) {
+            ctx.extensionData.lastProgressLogAt = now;
             const pos = ctx.extensionData.position || 0;
             const dur = ctx.extensionData.duration || 0;
             const percent = dur > 0 ? Math.round((pos / dur) * 100) : 0;

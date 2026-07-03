@@ -19,6 +19,24 @@ type TracklistRowWithRowId = TracklistResultView['tracks'][number] & {
   rowId?: string;
 };
 
+/**
+ * Dev-only client log for emulator seek diagnostics.
+ * @param {string} message - Log message.
+ * @param {Record<string, unknown>} [context] - Optional structured context.
+ */
+function logSeekClient(message: string, context?: Record<string, unknown>): void {
+  if (!import.meta.env.DEV) {
+    return;
+  }
+
+  if (context) {
+    console.debug(`[CACP-Seek] ${message}`, context);
+    return;
+  }
+
+  console.debug(`[CACP-Seek] ${message}`);
+}
+
 const DEV_LOOKUP_ARTIST = 'Nora En Pure';
 const DEV_LOOKUP_TITLE = 'Purified #512';
 
@@ -249,7 +267,7 @@ export default function App() {
     const durationMs = song?.track_duration;
     const progressMs = song?.track_progress;
 
-    console.log('[CACP-Seek] App tracklist row click', {
+    logSeekClient('App tracklist row click', {
       order: track.order,
       artist: track.artist,
       title: track.title,
@@ -326,15 +344,13 @@ export default function App() {
   ) => {
     const durationMs = song.track_duration;
     if (durationMs == null || durationMs <= 0) {
-      console.warn('[CACP-Seek] App progress click — no track_duration');
+      logSeekClient('App progress click — no track_duration');
       return;
     }
 
     const ratio = getRatioFromEvent(event);
     const targetMs = Math.round(durationMs * ratio);
-    console.log(
-      `[CACP-Seek] App progress click ratio=${ratio.toFixed(3)} targetMs=${targetMs} durationMs=${durationMs}`,
-    );
+    logSeekClient('App progress click', { ratio: Number(ratio.toFixed(3)), targetMs, durationMs });
     sendSeek(targetMs);
   };
 

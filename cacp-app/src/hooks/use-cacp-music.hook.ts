@@ -24,6 +24,19 @@ export type CacpMusicState = {
 };
 
 /**
+ * Dev-only client log for emulator seek diagnostics.
+ * @param {string} message - Log message.
+ * @param {Record<string, unknown>} [context] - Optional structured context.
+ */
+function logSeekClient(message: string, context?: Record<string, unknown>): void {
+  if (!import.meta.env.DEV) {
+    return;
+  }
+
+  console.debug(`[CACP-Seek] ${message}`, context);
+}
+
+/**
  * Merge incoming song payload with existing state when the track id matches.
  */
 const mergeSongData = (
@@ -87,7 +100,7 @@ export const useCacpMusic = (): CacpMusicState => {
    * Send an absolute seek request (track position in ms) to the DeskThing server.
    */
   const sendSeek = useCallback((positionMs: number) => {
-    console.log('[CACP-Seek] hook sendSeek', {
+    logSeekClient('hook sendSeek', {
       positionMs,
       positionSeconds: Math.round(positionMs / 1000),
       songId: song?.id ?? null,

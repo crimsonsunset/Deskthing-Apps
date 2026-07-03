@@ -359,6 +359,10 @@ export async function scrapeTracklist(
     tracklistLogger.debug('Scrolling to trigger lazy-loaded artwork', { url });
     await autoScrollToLoadArtwork(page);
 
+    // Reconstructing our own parseTracklistDom source (via .toString()) inside the
+    // browser context — no user/network input reaches eval. This lets the parser
+    // stay a single pure function usable both in Node (linkedom tests) and here in
+    // page.evaluate, without duplicating the DOM-parsing logic.
     const scraped = await page.evaluate((parserSource: string) => {
       const parseTracklistDom = eval(`(${parserSource})`) as (document: Document) => ParsedTracklistDom;
       return parseTracklistDom(document);

@@ -192,7 +192,12 @@ export class CACPMediaStore {
     this.sendCommandToExtension('pause', {}, 'Pause requested');
   }
 
-  /** Favorites the current standalone track via the extension. */
+  /**
+   * Favorites the current standalone track via the extension.
+   * @returns {boolean} True when the favorite command was sent on the extension
+   * WebSocket (not whether the favorite itself ultimately succeeded — that outcome
+   * arrives later via the extension's 'command-result' message).
+   */
   public handleFavoriteStandalone(): boolean {
     return this.sendCommandToExtension('favorite', {}, 'Favorite requested');
   }

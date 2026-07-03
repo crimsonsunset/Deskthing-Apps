@@ -3,6 +3,14 @@ import type { Browser, Page } from 'puppeteer-core';
 /** SoundCloud's shared public web client id (not app-specific). */
 const WEB_CLIENT_ID = 'O7atZypwLvuWSY9hWnnQ3vrLTHH7wqMe';
 
+/**
+ * NOTE: the `oauth_token` cookie read in this module grants full account access.
+ * It only ever lives inside `page.evaluate()` (the browser context, not Node) and
+ * is passed straight to `fetch` — never returned to the caller or logged. Keep it
+ * that way: do not include `token` in any tracklistLogger call in this file or its
+ * callers.
+ */
+
 export type SessionLikeResult = {
   success: boolean;
   status?: number;
