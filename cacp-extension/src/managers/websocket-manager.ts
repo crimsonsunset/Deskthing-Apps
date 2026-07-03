@@ -5,30 +5,98 @@
  * outbound priority/command-result relaying.
  */
 
-import logger from '@crimsonsunset/jsg-logger';
+import jsgLogger, { type LoggerInstance, type LoggerInstanceType } from '@crimsonsunset/jsg-logger';
+import type {
+  ControlCommandResult,
+  EnrichedDisplay,
+  MediaControlCommand,
+  MediaSource,
+} from '../types/global-state.types.js';
 
-const backgroundLogger = logger.getComponent('background');
+const logger = jsgLogger as unknown as LoggerInstanceType;
+const backgroundLogger: LoggerInstance = logger.getComponent('background');
 
 const DEFAULT_WS_URL = 'ws://127.0.0.1:8081';
 const MAX_RECONNECT_DELAY_MS = 30000;
 const PING_INTERVAL_MS = 30000;
 
+export interface BridgeManagerDeps {
+  sendControlCommand: (
+    command: MediaControlCommand,
+    tabId?: number | null,
+    time?: number,
+  ) => Promise<ControlCommandResult>;
+  setEnrichedDisplay: (display: EnrichedDisplay | null) => void;
+  getCurrentPriority: () => MediaSource | null;
+  onFavoriteResult: (result: { status: string; error?: string }) => void;
+  onTracklistResult: (result: { status: string; error?: string; result?: unknown | null }) => void;
+}
+
+interface BridgeInboundMessage {
+  type?: string;
+  action?: string;
+  title?: string;
+  artist?: string | null;
+  thumbnail?: string | null;
+  mixTitle?: string;
+  mixArtist?: string;
+  inMixOrder?: number;
+  status?: string;
+  error?: string;
+  result?: unknown;
+  time?: number;
+  id?: string;
+  timestamp?: number;
+}
+
+/**
+ * Parses a WebSocket frame into a bridge message object.
+ * @param raw - Raw message data from the WebSocket event
+ */
+function parseBridgeMessage(raw: unknown): BridgeInboundMessage | null {
+  if (typeof raw !== 'string') {
+    return null;
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') {
+      return null;
+    }
+    return parsed as BridgeInboundMessage;
+  } catch {
+    return null;
+  }
+}
+
 export class BridgeManager {
+  sendControlCommand: BridgeManagerDeps['sendControlCommand'];
+  setEnrichedDisplay: BridgeManagerDeps['setEnrichedDisplay'];
+  getCurrentPriority: BridgeManagerDeps['getCurrentPriority'];
+  onFavoriteResult: BridgeManagerDeps['onFavoriteResult'];
+  onTracklistResult: BridgeManagerDeps['onTracklistResult'];
+
+  ws: WebSocket | null;
+  wsConnected: boolean;
+  wsConnecting: boolean;
+  reconnectDelayMs: number;
+  pingIntervalId: ReturnType<typeof setInterval> | null;
+
   /**
-   * @param {{
-   *   sendControlCommand: (command: string, tabId?: number|null, time?: number) => Promise<object>,
-   *   setEnrichedDisplay: (display: object|null) => void,
-   *   getCurrentPriority: () => object|null,
-   *   onFavoriteResult: (result: { status: string, error?: string }) => void,
-   *   onTracklistResult: (result: { status: string, error?: string, result?: object | null }) => void,
-   * }} deps - Callbacks into the GlobalMediaManager instance.
+   * @param deps - Callbacks into the GlobalMediaManager instance.
    */
-  constructor({ sendControlCommand, setEnrichedDisplay, getCurrentPriority, onFavoriteResult, onTracklistResult }) {
+  constructor({
+    sendControlCommand,
+    setEnrichedDisplay,
+    getCurrentPriority,
+    onFavoriteResult,
+    onTracklistResult,
+  }: BridgeManagerDeps) {
     this.sendControlCommand = sendControlCommand;
     this.setEnrichedDisplay = setEnrichedDisplay;
     this.getCurrentPriority = getCurrentPriority;
-    this.onFavoriteResult = onFavoriteResult || (() => {});
-    this.onTracklistResult = onTracklistResult || (() => {});
+    this.onFavoriteResult = onFavoriteResult ?? (() => {});
+    this.onTracklistResult = onTracklistResult ?? (() => {});
 
     this.ws = null;
     this.wsConnected = false;
@@ -39,23 +107,23 @@ export class BridgeManager {
 
   /**
    * Returns the bridge WebSocket URL.
-   * @returns {string}
    */
-  getBridgeUrl() {
+  getBridgeUrl(): string {
     return DEFAULT_WS_URL;
   }
 
   /**
    * Starts a 30s keepalive ping interval. Clears any existing interval first.
    */
-  startPingInterval() {
+  startPingInterval(): void {
     if (this.pingIntervalId) clearInterval(this.pingIntervalId);
     this.pingIntervalId = setInterval(() => {
       if (this.wsConnected && this.ws) {
         try {
           this.ws.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
         } catch (err) {
-          backgroundLogger.trace('Failed to send ping', { error: err?.message });
+          const message = err instanceof Error ? err.message : String(err);
+          backgroundLogger.trace('Failed to send ping', { error: message });
         }
       }
     }, PING_INTERVAL_MS);
@@ -64,7 +132,7 @@ export class BridgeManager {
   /**
    * Tears down bridge connection state and clears the ping interval.
    */
-  cleanupBridge() {
+  cleanupBridge(): void {
     this.wsConnected = false;
     this.wsConnecting = false;
     this.ws = null;
@@ -79,7 +147,7 @@ export class BridgeManager {
    * Guards against concurrent attempts. On unintentional close, schedules
    * an exponential-backoff-with-jitter reconnect (capped at 30s).
    */
-  connect() {
+  connect(): void {
     if (this.wsConnected || this.wsConnecting) return;
     this.wsConnecting = true;
 
@@ -93,14 +161,15 @@ export class BridgeManager {
         this.reconnectDelayMs = 1000;
         backgroundLogger.info('Connected to CACP app bridge', { url });
         try {
-          this.ws.send(JSON.stringify({
+          this.ws?.send(JSON.stringify({
             type: 'connection',
             source: 'cacp-extension',
             version: chrome.runtime.getManifest().version,
-            ts: Date.now()
+            ts: Date.now(),
           }));
         } catch (err) {
-          backgroundLogger.trace('Failed to send connection handshake', { error: err?.message });
+          const message = err instanceof Error ? err.message : String(err);
+          backgroundLogger.trace('Failed to send connection handshake', { error: message });
         }
         this.startPingInterval();
         this.pushPriority(this.getCurrentPriority());
@@ -122,12 +191,16 @@ export class BridgeManager {
 
       this.ws.addEventListener('message', async (evt) => {
         try {
-          const msg = JSON.parse(evt.data);
-          if (msg?.type === 'pong') {
+          const msg = parseBridgeMessage(evt.data);
+          if (!msg) {
+            return;
+          }
+
+          if (msg.type === 'pong') {
             backgroundLogger.trace('Bridge pong received', { timestamp: msg.timestamp });
             return;
           }
-          if (msg?.type === 'displayMetadata') {
+          if (msg.type === 'displayMetadata') {
             this.setEnrichedDisplay({
               title: msg.title,
               artist: msg.artist ?? null,
@@ -138,14 +211,14 @@ export class BridgeManager {
             });
             return;
           }
-          if (msg?.type === 'favorite-result') {
+          if (msg.type === 'favorite-result') {
             this.onFavoriteResult({
               status: msg.status === 'ready' ? 'ready' : 'error',
               error: msg.error,
             });
             return;
           }
-          if (msg?.type === 'tracklist-result') {
+          if (msg.type === 'tracklist-result') {
             this.onTracklistResult({
               status: msg.status ?? 'error',
               error: msg.error,
@@ -153,9 +226,10 @@ export class BridgeManager {
             });
             return;
           }
-          if (msg?.type !== 'media-command' || !msg?.action) return;
+          if (msg.type !== 'media-command' || !msg.action) return;
+
           const action = String(msg.action).toLowerCase();
-          let commandResult;
+          let commandResult: ControlCommandResult | undefined;
           switch (action) {
             case 'play':
               commandResult = await this.sendControlCommand('play');
@@ -189,24 +263,24 @@ export class BridgeManager {
               return;
           }
 
-          // Relay the result back to the server so seek/transport failures are
-          // visible from the app server's log alone — no Chrome DevTools needed.
           this.sendCommandResultToBridge(action, commandResult, msg.time);
         } catch (err) {
-          backgroundLogger.warn('Failed to process bridge message', { error: err?.message });
+          const message = err instanceof Error ? err.message : String(err);
+          backgroundLogger.warn('Failed to process bridge message', { error: message });
         }
       });
     } catch (e) {
-      backgroundLogger.error('Failed to create bridge socket', { error: e?.message });
+      const message = e instanceof Error ? e.message : String(e);
+      backgroundLogger.error('Failed to create bridge socket', { error: message });
       this.wsConnecting = false;
     }
   }
 
   /**
    * Asks the CACP app server to like the current track (in-mix CDP or standalone extension click).
-   * @returns {boolean} Whether the request was sent on the bridge.
+   * @returns Whether the request was sent on the bridge.
    */
-  requestFavoriteFromApp() {
+  requestFavoriteFromApp(): boolean {
     if (!this.wsConnected || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return false;
     }
@@ -215,16 +289,17 @@ export class BridgeManager {
       this.ws.send(JSON.stringify({ type: 'favorite-request', timestamp: Date.now() }));
       return true;
     } catch (err) {
-      backgroundLogger.warn('Failed to send favorite-request on bridge', { error: err?.message });
+      const message = err instanceof Error ? err.message : String(err);
+      backgroundLogger.warn('Failed to send favorite-request on bridge', { error: message });
       return false;
     }
   }
 
   /**
    * Asks the CACP app server to run a forced 1001tracklists lookup for the current mix.
-   * @returns {boolean} Whether the request was sent on the bridge.
+   * @returns Whether the request was sent on the bridge.
    */
-  requestTracklistLookupFromApp() {
+  requestTracklistLookupFromApp(): boolean {
     if (!this.wsConnected || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return false;
     }
@@ -233,7 +308,8 @@ export class BridgeManager {
       this.ws.send(JSON.stringify({ type: 'tracklist-request', timestamp: Date.now() }));
       return true;
     } catch (err) {
-      backgroundLogger.warn('Failed to send tracklist-request on bridge', { error: err?.message });
+      const message = err instanceof Error ? err.message : String(err);
+      backgroundLogger.warn('Failed to send tracklist-request on bridge', { error: message });
       return false;
     }
   }
@@ -241,13 +317,16 @@ export class BridgeManager {
   /**
    * Relays a bridge-driven command's outcome back to the app server over the
    * WS bridge, so server-side logs alone show whether play/pause/seek/etc.
-   * actually succeeded on the page (e.g. soundcloud.js's seek `method`/`time`),
-   * rather than only "the WS write to the extension succeeded".
-   * @param {string} action - The bridge command name (e.g. 'seek')
-   * @param {{success?: boolean, detail?: unknown, error?: string}} [result] - Result from sendControlCommand
-   * @param {number} [time] - The seek target time, when action === 'seek'
+   * actually succeeded on the page.
+   * @param action - The bridge command name (e.g. 'seek')
+   * @param result - Result from sendControlCommand
+   * @param time - The seek target time, when action === 'seek'
    */
-  sendCommandResultToBridge(action, result, time) {
+  sendCommandResultToBridge(
+    action: string,
+    result: ControlCommandResult | undefined,
+    time?: number,
+  ): void {
     if (!this.wsConnected || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     const payload = {
       type: 'command-result',
@@ -256,7 +335,7 @@ export class BridgeManager {
       detail: result?.detail,
       error: result?.error,
       time,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
     if (action === 'seek') {
       backgroundLogger.info('[CACP-Seek] relaying command-result to server', payload);
@@ -264,18 +343,22 @@ export class BridgeManager {
     try {
       this.ws.send(JSON.stringify(payload));
     } catch (e) {
-      backgroundLogger.warn('Failed to relay command-result to bridge', { action, error: e?.message });
+      const message = e instanceof Error ? e.message : String(e);
+      backgroundLogger.warn('Failed to relay command-result to bridge', { action, error: message });
     }
   }
 
   /**
    * Pushes the current priority source's media state to the bridge.
    * No-ops when not connected or no priority source exists.
-   * @param {Object|null} priority - The current priority media source
+   * @param priority - The current priority media source
    */
-  pushPriority(priority) {
+  pushPriority(priority: MediaSource | null): void {
     if (!priority || !this.wsConnected || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     const track = priority.trackInfo || {};
+    const artworkValue = Array.isArray(track.artwork) && track.artwork.length
+      ? (typeof track.artwork[0] === 'string' ? track.artwork[0] : track.artwork[0]?.src)
+      : undefined;
     const mediaData = {
       type: 'mediaData',
       site: priority.site,
@@ -284,21 +367,22 @@ export class BridgeManager {
         title: track.title,
         artist: track.artist,
         album: track.album || '',
-        artwork: Array.isArray(track.artwork) && track.artwork.length ? track.artwork[0]?.src || track.artwork[0] : undefined,
-        isPlaying: !!priority.isPlaying
-      }
+        artwork: artworkValue,
+        isPlaying: !!priority.isPlaying,
+      },
     };
     const timeupdate = {
       type: 'timeupdate',
       currentTime: priority.currentTime || 0,
       duration: priority.duration || 0,
-      isPlaying: !!priority.isPlaying
+      isPlaying: !!priority.isPlaying,
     };
     try {
       this.ws.send(JSON.stringify(mediaData));
       this.ws.send(JSON.stringify(timeupdate));
     } catch (err) {
-      backgroundLogger.trace('Failed to push priority to bridge', { error: err?.message });
+      const message = err instanceof Error ? err.message : String(err);
+      backgroundLogger.trace('Failed to push priority to bridge', { error: message });
     }
   }
 }

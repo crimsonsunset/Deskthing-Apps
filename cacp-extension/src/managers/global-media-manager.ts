@@ -4,28 +4,54 @@
  * priority, and dispatches control commands to the current priority tab.
  */
 
-import logger from '@crimsonsunset/jsg-logger';
+import jsgLogger, { type LoggerInstance, type LoggerInstanceType } from '@crimsonsunset/jsg-logger';
+import type {
+  ControlCommandResult,
+  EnrichedDisplay,
+  FavoriteStatus,
+  GlobalState,
+  MediaControlCommand,
+  MediaSource,
+  MediaSourceData,
+  PriorityChangePayload,
+  SourceListItem,
+  TracklistState,
+} from '../types/global-state.types.js';
 
-const backgroundLogger = logger.getComponent('background');
+const logger = jsgLogger as unknown as LoggerInstanceType;
+const backgroundLogger: LoggerInstance = logger.getComponent('background');
 
 const STALE_SOURCE_THRESHOLD_MS = 30000;
 const STALE_CHECK_INTERVAL_MS = 10000;
 
+export interface GlobalMediaManagerOptions {
+  onPriorityChange?: (priority: MediaSource | null) => void;
+}
+
 export class GlobalMediaManager {
+  activeSources: Map<number | undefined, MediaSource>;
+  currentPriority: MediaSource | null;
+  siteHandlers: Map<number | undefined, unknown>;
+  enrichedDisplay: EnrichedDisplay | null;
+  favoriteStatus: FavoriteStatus;
+  favoriteError: string | null;
+  tracklistState: TracklistState;
+  updateInterval: ReturnType<typeof setInterval> | null;
+  onPriorityChange: (priority: MediaSource | null) => void;
+
   /**
-   * @param {{ onPriorityChange?: (priority: object|null) => void }} [options] -
-   *   Callback invoked whenever a priority snapshot should be pushed to the app bridge.
+   * @param options - Callback invoked whenever a priority snapshot should be pushed to the app bridge.
    */
-  constructor({ onPriorityChange } = {}) {
-    this.activeSources = new Map(); // tabId -> MediaSource
-    this.currentPriority = null; // Currently highest priority source
-    this.siteHandlers = new Map(); // tabId -> handler info
-    this.enrichedDisplay = null; // Server-provided Format A metadata overlay
+  constructor({ onPriorityChange }: GlobalMediaManagerOptions = {}) {
+    this.activeSources = new Map();
+    this.currentPriority = null;
+    this.siteHandlers = new Map();
+    this.enrichedDisplay = null;
     this.favoriteStatus = 'idle';
     this.favoriteError = null;
     this.tracklistState = { status: 'idle', error: null, result: null };
     this.updateInterval = null;
-    this.onPriorityChange = onPriorityChange || (() => {});
+    this.onPriorityChange = onPriorityChange ?? (() => {});
 
     backgroundLogger.info('GlobalMediaManager initialized');
     this.startPeriodicUpdates();
@@ -33,19 +59,21 @@ export class GlobalMediaManager {
 
   /**
    * Register a media source from a tab
+   * @param tabId - Source tab id from the content script sender
+   * @param sourceData - Initial media source snapshot from the tab
    */
-  registerSource(tabId, sourceData) {
-    const source = {
+  registerSource(tabId: number | undefined, sourceData: MediaSourceData): void {
+    const source: MediaSource = {
       tabId,
       site: sourceData.site,
       isActive: sourceData.isActive,
       trackInfo: sourceData.trackInfo,
       isPlaying: sourceData.isPlaying,
-      canControl: sourceData.canControl,
-      currentTime: sourceData.currentTime || 0,
-      duration: sourceData.duration || 0,
+      canControl: sourceData.canControl ?? true,
+      currentTime: sourceData.currentTime ?? 0,
+      duration: sourceData.duration ?? 0,
       lastUpdate: Date.now(),
-      priority: sourceData.priority || 1
+      priority: sourceData.priority ?? 1,
     };
 
     this.activeSources.set(tabId, source);
@@ -57,20 +85,18 @@ export class GlobalMediaManager {
       isActive: source.isActive,
       isPlaying: source.isPlaying,
       trackTitle: source.trackInfo?.title,
-      totalSources: this.activeSources.size
+      totalSources: this.activeSources.size,
     });
 
-    // Notify popup if open
     this.notifyPopup('sources-updated', this.getSourcesList());
-    // Push current priority snapshot to app bridge
     this.onPriorityChange(this.currentPriority);
   }
 
   /**
    * Stores server-enriched in-mix display metadata for popup / priority overlay.
-   * @param {object|null} display - Format A fields from CACP server, or null to clear.
+   * @param display - Format A fields from CACP server, or null to clear.
    */
-  setEnrichedDisplay(display) {
+  setEnrichedDisplay(display: EnrichedDisplay | null): void {
     this.enrichedDisplay = display;
     backgroundLogger.debug('Enriched display updated', {
       title: display?.title,
@@ -81,10 +107,10 @@ export class GlobalMediaManager {
 
   /**
    * Stores the latest like/favorite action status for the popup.
-   * @param {'idle' | 'loading' | 'ready' | 'error'} status - Favorite pipeline status.
-   * @param {string | null} [error] - Error message when status is error.
+   * @param status - Favorite pipeline status.
+   * @param error - Error message when status is error.
    */
-  setFavoriteStatus(status, error = null) {
+  setFavoriteStatus(status: FavoriteStatus, error: string | null = null): void {
     this.favoriteStatus = status;
     this.favoriteError = error;
     this.notifyPopup('favorite-updated');
@@ -92,9 +118,9 @@ export class GlobalMediaManager {
 
   /**
    * Stores tracklist lookup state for the popup panel.
-   * @param {{ status?: 'idle' | 'loading' | 'ready' | 'error'; error?: string | null; result?: object | null }} patch - Partial tracklist state update.
+   * @param patch - Partial tracklist state update.
    */
-  setTracklistState(patch) {
+  setTracklistState(patch: Partial<TracklistState>): void {
     const prev = this.tracklistState ?? { status: 'idle', error: null, result: null };
     const nextStatus = patch.status ?? prev.status;
     const nextResult = patch.status === 'loading'
@@ -111,15 +137,17 @@ export class GlobalMediaManager {
 
   /**
    * Update existing source
+   * @param tabId - Source tab id
+   * @param updates - Partial media source fields from the content script
    */
-  updateSource(tabId, updates) {
+  updateSource(tabId: number | undefined, updates: MediaSourceData): void {
     const source = this.activeSources.get(tabId);
 
     if (!source) {
       backgroundLogger.warn('update-media-source received for unknown tab — SW likely restarted, re-registering', {
         tabId,
         site: updates.site,
-        totalSources: this.activeSources.size
+        totalSources: this.activeSources.size,
       });
       this.registerSource(tabId, updates);
       return;
@@ -133,7 +161,7 @@ export class GlobalMediaManager {
       site: source.site,
       isPlaying: source.isPlaying,
       isActive: source.isActive,
-      updates: Object.keys(updates)
+      updates: Object.keys(updates),
     });
 
     this.notifyPopup('sources-updated', this.getSourcesList());
@@ -142,8 +170,9 @@ export class GlobalMediaManager {
 
   /**
    * Remove a media source (tab closed or no longer has media)
+   * @param tabId - Tab id to remove
    */
-  removeSource(tabId) {
+  removeSource(tabId: number | undefined): void {
     const source = this.activeSources.get(tabId);
     if (source) {
       this.activeSources.delete(tabId);
@@ -151,7 +180,7 @@ export class GlobalMediaManager {
 
       backgroundLogger.debug('Media source removed', {
         tabId,
-        site: source.site
+        site: source.site,
       });
 
       this.notifyPopup('sources-updated', this.getSourcesList());
@@ -161,21 +190,15 @@ export class GlobalMediaManager {
   /**
    * Update priority ranking - determine which source should be the primary
    */
-  updatePriority() {
-    let highestPriority = null;
+  updatePriority(): void {
+    let highestPriority: MediaSource | null = null;
     let highestScore = -1;
 
     for (const source of this.activeSources.values()) {
-      // Calculate priority score
       let score = source.priority || 1;
 
-      // Boost score for actively playing media
       if (source.isPlaying) score += 10;
-
-      // Boost score for sources that can be controlled
       if (source.canControl) score += 5;
-
-      // Boost score for active/ready sources
       if (source.isActive) score += 2;
 
       if (score > highestScore) {
@@ -192,14 +215,13 @@ export class GlobalMediaManager {
         previousTab: previousPriority,
         newTab: highestPriority?.tabId,
         newSite: highestPriority?.site,
-        score: highestScore
+        score: highestScore,
       });
 
       this.notifyPopup('priority-changed', {
         currentPriority: highestPriority,
-        allSources: this.getSourcesList()
-      });
-      // Push latest priority snapshot to app bridge
+        allSources: this.getSourcesList(),
+      } satisfies PriorityChangePayload);
       this.onPriorityChange(highestPriority);
     }
   }
@@ -207,8 +229,8 @@ export class GlobalMediaManager {
   /**
    * Get formatted list of all sources for popup display
    */
-  getSourcesList() {
-    return Array.from(this.activeSources.values()).map(source => ({
+  getSourcesList(): SourceListItem[] {
+    return Array.from(this.activeSources.values()).map((source) => ({
       tabId: source.tabId,
       site: source.site,
       trackInfo: source.trackInfo,
@@ -219,78 +241,89 @@ export class GlobalMediaManager {
       duration: source.duration || 0,
       isPriority: source.tabId === this.currentPriority?.tabId,
       priority: source.priority,
-      lastUpdate: source.lastUpdate
+      lastUpdate: source.lastUpdate,
     }));
   }
 
   /**
    * Send control command to specific source or current priority
+   * @param command - Media control command name
+   * @param tabId - Optional explicit target tab id
+   * @param time - Seek target time in seconds when command is seek
    */
-  async sendControlCommand(command, tabId = null) {
-    const targetTabId = tabId || this.currentPriority?.tabId;
+  async sendControlCommand(
+    command: MediaControlCommand,
+    tabId: number | null = null,
+    time?: number,
+  ): Promise<ControlCommandResult> {
+    const targetTabId = tabId ?? this.currentPriority?.tabId;
 
-    if (!targetTabId) {
+    if (targetTabId === undefined) {
       backgroundLogger.warn('No target tab for control command', { command });
       return { success: false, error: 'No active media source' };
     }
 
     try {
-      const payload = { type: 'media-control', command };
-      // Allow optional time param for seek
-      if (command === 'seek' && typeof arguments[2] === 'number') {
-        payload.time = arguments[2];
+      const payload: { type: 'media-control'; command: MediaControlCommand; time?: number } = {
+        type: 'media-control',
+        command,
+      };
+
+      if (command === 'seek' && typeof time === 'number') {
+        payload.time = time;
         backgroundLogger.info('[CACP-Seek] sendControlCommand seek', {
           targetTabId,
-          time: arguments[2],
+          time,
           priorityTab: this.currentPriority?.tabId,
         });
       }
-      const response = await chrome.tabs.sendMessage(targetTabId, payload);
+
+      const response = await chrome.tabs.sendMessage(targetTabId, payload) as ControlCommandResult | undefined;
 
       if (command === 'seek') {
         backgroundLogger.info('[CACP-Seek] sendControlCommand seek response', {
           targetTabId,
-          time: arguments[2],
+          time,
           response,
         });
       } else {
         backgroundLogger.debug('Control command sent', {
           command,
           targetTabId,
-          success: response?.success
+          success: response?.success,
         });
       }
 
-      return response;
+      return response ?? { success: false, error: 'No response from content script' };
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       backgroundLogger.error('Failed to send control command', {
         command,
         targetTabId,
-        error: error.message
+        error: message,
       });
 
-      // Remove source if tab is unreachable
       this.removeSource(targetTabId);
-      return { success: false, error: error.message };
+      return { success: false, error: message };
     }
   }
 
   /**
    * Notify popup of changes
+   * @param type - Popup notification suffix (without popup- prefix)
+   * @param data - Optional payload for popup listeners
    */
-  notifyPopup(type, data) {
+  notifyPopup(type: string, data?: unknown): void {
     chrome.runtime.sendMessage({
       type: `popup-${type}`,
-      data: data
-    }).catch(() => {
-      // Popup might not be open, which is fine
-    });
+      data,
+    }).catch(() => {});
   }
 
   /**
    * Clean up stale sources periodically
    */
-  startPeriodicUpdates() {
+  startPeriodicUpdates(): void {
     this.updateInterval = setInterval(() => {
       const now = Date.now();
 
@@ -306,7 +339,7 @@ export class GlobalMediaManager {
   /**
    * Get current state for popup
    */
-  getCurrentState() {
+  getCurrentState(): GlobalState {
     return {
       sources: this.getSourcesList(),
       currentPriority: this.currentPriority,

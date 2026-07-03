@@ -34,7 +34,7 @@
   },
   "options_page": "src/settings/settings.html",
   "background": {
-    "service_worker": "src/background.js",
+    "service_worker": "src/background.ts",
     "type": "module"
   },
   "web_accessible_resources": [

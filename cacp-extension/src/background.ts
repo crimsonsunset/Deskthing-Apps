@@ -4,11 +4,14 @@
  * GlobalMediaManager (tab/priority state) and BridgeManager (app WS bridge).
  */
 
-import logger from '@crimsonsunset/jsg-logger';
+import jsgLogger, { type LoggerInstance, type LoggerInstanceType } from '@crimsonsunset/jsg-logger';
 import { GlobalMediaManager } from './managers/global-media-manager.js';
 import { BridgeManager } from './managers/websocket-manager.js';
+import type { BackgroundInboundMessage, BackgroundResponse } from './types/extension-messages.types.js';
+import type { FavoriteStatus, TracklistResult, TracklistStatus } from './types/global-state.types.js';
 
-// Apply logger config at SW startup — fire-and-forget (top-level await disallowed in SW)
+const logger = jsgLogger as unknown as LoggerInstanceType;
+
 (async () => {
   try {
     const configResp = await fetch(chrome.runtime.getURL('logger-config.json'));
@@ -16,10 +19,12 @@ import { BridgeManager } from './managers/websocket-manager.js';
       const config = await configResp.json();
       logger.configure(config);
     }
-  } catch {}
+  } catch {
+    // Logger config is optional at SW startup.
+  }
 })();
 
-const backgroundLogger = logger.getComponent('background');
+const backgroundLogger: LoggerInstance = logger.getComponent('background');
 
 const mediaManager = new GlobalMediaManager();
 
@@ -28,46 +33,53 @@ const bridgeManager = new BridgeManager({
   setEnrichedDisplay: (display) => mediaManager.setEnrichedDisplay(display),
   getCurrentPriority: () => mediaManager.currentPriority,
   onFavoriteResult: (result) => {
-    mediaManager.setFavoriteStatus(result.status, result.error ?? null);
+    mediaManager.setFavoriteStatus(result.status as FavoriteStatus, result.error ?? null);
   },
   onTracklistResult: (result) => {
     mediaManager.setTracklistState({
-      status: result.status,
+      status: result.status as TracklistStatus,
       error: result.error ?? null,
-      result: result.result ?? null,
+      result: (result.result as TracklistResult | null) ?? null,
     });
   },
 });
 
 mediaManager.onPriorityChange = (priority) => bridgeManager.pushPriority(priority);
 
-// Extension lifecycle handlers
 backgroundLogger.info('CACP Background service worker started', {
   version: chrome.runtime.getManifest().version,
-  timestamp: Date.now()
+  timestamp: Date.now(),
 });
 
 chrome.runtime.onInstalled.addListener((details) => {
   backgroundLogger.info('Extension lifecycle event', {
     reason: details.reason,
-    previousVersion: details.previousVersion
+    previousVersion: details.previousVersion,
   });
 });
 
-// Handle tab removal
 chrome.tabs.onRemoved.addListener((tabId) => {
   mediaManager.removeSource(tabId);
   backgroundLogger.debug('Tab removed, cleaning up media source', { tabId });
 });
 
-// Enhanced message handling for global media control
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+/**
+ * Routes extension runtime messages to GlobalMediaManager and BridgeManager.
+ * @param message - Inbound runtime message
+ * @param sender - Message sender metadata
+ * @param sendResponse - Async response callback
+ */
+function handleRuntimeMessage(
+  message: BackgroundInboundMessage,
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response?: BackgroundResponse) => void,
+): boolean | void {
   const tabId = sender.tab?.id;
 
   backgroundLogger.debug('Message received', {
     type: message.type,
     tabId,
-    hasData: !!message.data
+    hasData: 'data' in message && !!message.data,
   });
 
   switch (message.type) {
@@ -87,7 +99,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       break;
 
     case 'get-global-state':
-      // Popup requesting current state
       sendResponse(mediaManager.getCurrentState());
       break;
 
@@ -98,10 +109,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           time: message.time,
         });
       }
-      // Popup sending control command (optional time for seek)
-      mediaManager.sendControlCommand(message.command, message.tabId, message.time)
-        .then(result => sendResponse(result));
-      return true; // Async response
+      mediaManager.sendControlCommand(message.command, message.tabId ?? null, message.time)
+        .then((result) => sendResponse(result));
+      return true;
 
     case 'like-track': {
       const priority = mediaManager.currentPriority;
@@ -171,10 +181,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       break;
 
     case 'set-priority-source': {
-      // Popup manually setting priority
       const source = mediaManager.activeSources.get(message.tabId);
       if (source) {
-        source.priority = 100; // Boost priority
+        source.priority = 100;
         mediaManager.updatePriority();
         sendResponse({ success: true });
       } else {
@@ -187,33 +196,35 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({
         status: 'active',
         version: chrome.runtime.getManifest().version,
-        activeSources: mediaManager.activeSources.size
+        activeSources: mediaManager.activeSources.size,
       });
       break;
 
     default:
-      backgroundLogger.warn('Unknown message type', { type: message.type });
+      backgroundLogger.warn('Unknown message type', { type: (message as { type?: string }).type });
       sendResponse({ success: false, error: 'Unknown message type' });
   }
 
-  return true; // Keep message channel open
+  return true;
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (!message || typeof message !== 'object' || typeof (message as { type?: unknown }).type !== 'string') {
+    sendResponse({ success: false, error: 'Unknown message type' });
+    return true;
+  }
+
+  return handleRuntimeMessage(message as BackgroundInboundMessage, sender, sendResponse);
 });
 
-// Keep service worker alive
 setInterval(() => {
   chrome.runtime.getPlatformInfo(() => {});
 }, 25000);
 
 backgroundLogger.info('Global Media Controller ready');
 
-// Establish bridge connection at startup
 bridgeManager.connect();
 
-// On fresh SW startup, notify any existing tabs so their content scripts
-// can re-register. The in-memory flag ensures we only broadcast once per
-// SW lifecycle — it resets to false every time the SW module reloads.
-// ponytail: tabs.query fires async; content scripts that lack a CACP handler
-// will just receive and ignore the message (no-op catch).
 let hasNotifiedRestart = false;
 if (!hasNotifiedRestart) {
   hasNotifiedRestart = true;
