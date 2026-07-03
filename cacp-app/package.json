@@ -17,6 +17,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "cacp-shared": "*",
     "@crimsonsunset/jsg-logger": "^1.8.9",
     "@deskthing/client": "latest",
     "@deskthing/server": "latest",

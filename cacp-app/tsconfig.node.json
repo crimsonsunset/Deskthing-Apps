@@ -10,14 +10,8 @@
     "esModuleInterop": true,
     "allowJs": true,
     "checkJs": false,
-    "types": ["node"],
-    "paths": {
-      "@shared/*": ["./shared/*"]
-    }
+    "types": ["node"]
   },
   "include": ["server/**/*", "deskthing.config.ts"],
-  "references": [
-    { "path": "./tsconfig.shared.json" }
-  ],
   "exclude": ["node_modules", "dist"]
 }

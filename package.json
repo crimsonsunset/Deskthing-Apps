@@ -48,7 +48,8 @@
   },
   "workspaces": [
     "cacp-app",
-    "cacp-extension"
+    "cacp-extension",
+    "cacp-shared"
   ],
   "overrides": {
     "esbuild": "^0.25.1"

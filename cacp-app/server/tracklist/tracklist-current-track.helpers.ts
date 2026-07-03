@@ -1,5 +1,5 @@
 import { isLocalDeskThingImageAvailable } from '../imageUtils.js';
-import { findCurrentTracklistTrack } from '../../shared/tracklist-cue-matching.js';
+import { findCurrentTracklistTrack } from 'cacp-shared';
 import type { TracklistTrack } from './tracklist.types.js';
 import { isPlaceholderTrackArt } from './tracklist-artwork.helpers.js';
 

@@ -5,9 +5,9 @@ export type TracklistCueTrack = {
 
 /**
  * Finds the tracklist row active at the given playback position using cue timestamps.
- * @param {T[]} tracks - Ordered tracklist rows (sorted by cue).
- * @param {number | null | undefined} progressMs - Current playback position in milliseconds.
- * @returns {T | null} The last track whose cue is at or before progressMs.
+ * @param tracks - Ordered tracklist rows (sorted by cue).
+ * @param progressMs - Current playback position in milliseconds.
+ * @returns The last track whose cue is at or before progressMs.
  */
 export function findCurrentTracklistTrack<T extends TracklistCueTrack>(
   tracks: T[],

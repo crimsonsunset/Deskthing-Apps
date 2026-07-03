@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { DeskThing } from '@deskthing/client';
-import { findCurrentTracklistTrack } from '@shared/tracklist-cue-matching';
+import {
+  findCurrentTracklistTrack,
+  formatCueSeconds,
+  getTrackDurationSeconds,
+} from 'cacp-shared';
 
-export { findCurrentTracklistTrack };
+export { findCurrentTracklistTrack, formatCueSeconds, getTrackDurationSeconds };
 
 export type TracklistTrackView = {
   order: number;
@@ -116,11 +120,6 @@ export const useCacpTracklist = (): TracklistState => {
 };
 
 /**
- * Formats cue seconds as m:ss for the tracklist panel.
- * @param {number | null} cueSeconds - Cue point in seconds.
- * @returns {string} Display time.
- */
-/**
  * Resolves raw mix artist/title for lookup from DeskThing song fields.
  * Enriched in-mix rows use artist `via {mixTitle} · {mixArtist}`.
  * @param {string | null | undefined} artist - Song artist line from DeskThing.
@@ -143,44 +142,4 @@ export const resolveMixLookupIdentity = (
   }
 
   return { artist: artistLine, title: titleLine };
-};
-
-export const formatCueSeconds = (cueSeconds: number | null): string => {
-  if (cueSeconds == null || cueSeconds < 0) {
-    return '—';
-  }
-
-  const minutes = Math.floor(cueSeconds / 60);
-  const seconds = cueSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-};
-
-/**
- * Computes how long a tracklist row plays for, from the gap to the next cue.
- * The last row falls back to the mix's total duration when available.
- * @param {TracklistTrackView[]} tracks - Ordered tracklist rows (sorted by cue).
- * @param {number} index - Index of the row to compute duration for.
- * @param {number | null} [mixDurationSeconds] - Total mix duration, for the last row.
- * @returns {number | null} Duration in seconds, or null when it can't be determined.
- */
-export const getTrackDurationSeconds = (
-  tracks: TracklistTrackView[],
-  index: number,
-  mixDurationSeconds?: number | null,
-): number | null => {
-  const track = tracks[index];
-  if (track?.cueSeconds == null) {
-    return null;
-  }
-
-  const nextCueSeconds = tracks[index + 1]?.cueSeconds;
-  if (nextCueSeconds != null) {
-    return nextCueSeconds - track.cueSeconds;
-  }
-
-  if (mixDurationSeconds != null && mixDurationSeconds > track.cueSeconds) {
-    return mixDurationSeconds - track.cueSeconds;
-  }
-
-  return null;
 };
