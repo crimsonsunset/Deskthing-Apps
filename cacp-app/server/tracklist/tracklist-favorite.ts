@@ -16,6 +16,8 @@ import {
   likeTrackViaSession,
 } from './soundcloud-session-api.util.js';
 
+const KEEP_TABS_OPEN = Boolean(process.env.CACP_KEEP_FAVORITE_TABS_OPEN);
+
 export type FavoriteMixTrackResult = {
   success: boolean;
   error?: string;
@@ -169,7 +171,6 @@ async function waitForNewWidgetIframe(
  * Favorites a specific in-mix track on SoundCloud via 1001TL row-icon click + session-replay API.
  * Opens the mix page, clicks the row's SoundCloud icon to lazy-load the widget iframe, parses the
  * real track id from the iframe src, then PUTs track_likes inside a logged-in soundcloud.com tab.
- * ponytail: leaves the 1001TL tab open after each run so you can inspect widget state manually.
  * @param {string} sourceUrl - Cached 1001tracklists mix URL.
  * @param {string} rowId - DOM id of the target track row (e.g. "tlp_14101120").
  * @returns {Promise<FavoriteMixTrackResult>} Outcome of the automation run.
@@ -290,8 +291,6 @@ export async function favoriteMixTrack(
         rowId,
         trackId,
         ms: timingMs(startedMs),
-        pageLeftOpen: true,
-        inspectUrl: page.url(),
       });
       return { success: true };
     }
@@ -316,10 +315,14 @@ export async function favoriteMixTrack(
     };
   } finally {
     browser.disconnect();
-    tracklistLogger.info('1001TL mix-favorite: CDP disconnected — browser tab left open for inspection', {
+    if (!KEEP_TABS_OPEN) {
+      await page.close().catch(() => undefined);
+    }
+    tracklistLogger.info('1001TL mix-favorite: CDP disconnected', {
       sourceUrl,
       rowId,
-      inspectUrl: page.url(),
+      tabClosed: !KEEP_TABS_OPEN,
+      inspectUrl: KEEP_TABS_OPEN ? page.url() : undefined,
       ms: timingMs(startedMs),
     });
   }
