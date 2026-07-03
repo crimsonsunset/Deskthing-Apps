@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "vite build",
     "build:debug": "DEBUG_BUILD=1 vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test src/sites/soundcloud/*.test.js"
   },
   "keywords": [
     "chrome-extension",
