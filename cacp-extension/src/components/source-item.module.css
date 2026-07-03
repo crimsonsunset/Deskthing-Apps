@@ -1,0 +1,156 @@
+.sourceItem {
+  background: #2a2a2a;
+  border-radius: 8px;
+  padding: 12px;
+  border: 1px solid #333;
+  transition: all 0.2s ease;
+}
+
+.priority {
+  border-color: #007aff;
+  background: #1a2332;
+}
+
+.active {
+  opacity: 1;
+}
+
+.inactive {
+  opacity: 0.6;
+}
+
+.sourceHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.sourceInfo {
+  flex: 1;
+}
+
+.sourceSite {
+  font-size: 12px;
+  font-weight: bold;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.priorityBadge {
+  background: #007aff;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  margin-left: 8px;
+}
+
+.sourceStatus {
+  font-size: 11px;
+  color: #aaa;
+}
+
+.sourceControls {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.controlBtn {
+  padding: 6px 8px;
+  background: #333;
+  color: white;
+  border: 1px solid #555;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  min-width: 32px;
+}
+
+.controlBtn:hover {
+  background: #444;
+}
+
+.controlBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.favoriteBtn {
+  background: #e84393;
+  border-color: #c7357d;
+}
+
+.favoriteBtn:hover {
+  background: #c7357d;
+}
+
+.noControls {
+  font-size: 10px;
+  color: #666;
+}
+
+.sourceTrack {
+  margin-top: 8px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.artwork {
+  width: 34px;
+  height: 34px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid #333;
+  flex-shrink: 0;
+}
+
+.trackDetails {
+  flex: 1;
+  min-width: 120px;
+}
+
+.trackTitle {
+  font-size: 11px;
+  font-weight: bold;
+  color: #fff;
+  margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trackArtist {
+  font-size: 10px;
+  color: #aaa;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progressBar {
+  margin-top: 6px;
+  gap: 4px;
+}
+
+.progressBar > div:last-child {
+  display: none;
+}
+
+.setPriorityBtn {
+  margin-top: 8px;
+  padding: 4px 8px;
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 10px;
+  width: 100%;
+}
+
+.setPriorityBtn:hover {
+  background: #218838;
+}

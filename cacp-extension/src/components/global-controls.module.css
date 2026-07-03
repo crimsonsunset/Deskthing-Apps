@@ -1,0 +1,39 @@
+.globalControls {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #2a2a2a;
+  border-radius: 8px;
+  border: 1px solid #333;
+}
+
+.globalControls button {
+  padding: 8px 12px;
+  background: #007aff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  min-width: 40px;
+}
+
+.globalControls button:hover:not(:disabled) {
+  background: #0056b3;
+}
+
+.globalControls button:disabled {
+  background: #333;
+  color: #666;
+  cursor: not-allowed;
+}
+
+.favoriteBtn:not(:disabled) {
+  background: #e84393;
+}
+
+.favoriteBtn:not(:disabled):hover {
+  background: #c7357d;
+}

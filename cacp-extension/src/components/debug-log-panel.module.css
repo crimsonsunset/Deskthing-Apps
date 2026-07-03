@@ -1,0 +1,63 @@
+.debugSection {
+  margin-top: 16px;
+  padding: 12px;
+  background: #222;
+  border-radius: 8px;
+  border: 1px solid #333;
+}
+
+.debugToggle {
+  background: #333;
+  padding: 6px 12px;
+  font-size: 11px;
+  margin-bottom: 12px;
+  width: 100%;
+  color: white;
+  border: 1px solid #555;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.debugToggle:hover {
+  background: #444;
+}
+
+.debugInfo {
+  display: block;
+}
+
+.logWrapper {
+  position: relative;
+}
+
+.logs {
+  background: #111;
+  padding: 8px;
+  border-radius: 4px;
+  max-height: 120px;
+  overflow-y: auto;
+  font-size: 10px;
+  font-family: monospace;
+  color: #ccc;
+  border: 1px solid #333;
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+.copyButton {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: #444;
+  color: #fff;
+  border: 1px solid #666;
+  border-radius: 3px;
+  padding: 2px 6px;
+  font-size: 9px;
+  cursor: pointer;
+  z-index: 10;
+}
+
+.copyButton:hover {
+  background: #555;
+}

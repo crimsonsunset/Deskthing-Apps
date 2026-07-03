@@ -1,0 +1,124 @@
+.globalStatus {
+  background: #2a2a2a;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+  border: 1px solid #333;
+}
+
+.statusHeader {
+  font-size: 12px;
+  font-weight: bold;
+  margin-bottom: 12px;
+  color: #fff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.refreshBtn {
+  padding: 4px 8px;
+  font-size: 10px;
+  background: #333;
+  color: white;
+  border: 1px solid #555;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.refreshBtn:hover:not(:disabled) {
+  background: #444;
+}
+
+.refreshBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.statusList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.statusItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid #333;
+}
+
+.statusItem:last-child {
+  border-bottom: none;
+}
+
+.nowPlayingItem {
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.statusLabel {
+  font-size: 11px;
+  color: #aaa;
+  flex-shrink: 0;
+}
+
+.nowPlayingItem .statusLabel {
+  margin-top: 2px;
+}
+
+.statusValue {
+  font-size: 11px;
+  font-weight: bold;
+  color: #fff;
+}
+
+.nowPlayingValue {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.artwork {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid #333;
+  flex-shrink: 0;
+}
+
+.trackMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 220px;
+  flex: 1;
+}
+
+.trackTitle {
+  font-size: 11px;
+  font-weight: bold;
+  color: #fff;
+}
+
+.trackArtist {
+  font-size: 11px;
+  color: #888;
+}
+
+.progressBar {
+  gap: 4px;
+}
+
+.progressBar > div:last-child {
+  display: none;
+}
+
+.timeStatus {
+  font-size: 10px;
+  color: #888;
+}

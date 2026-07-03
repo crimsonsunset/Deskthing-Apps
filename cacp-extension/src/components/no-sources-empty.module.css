@@ -1,0 +1,19 @@
+.noSources {
+  text-align: center;
+  padding: 24px;
+  color: #666;
+}
+
+.noSources p {
+  margin: 8px 0;
+}
+
+.supportedSites {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #333;
+}
+
+.supportedSites small {
+  color: #888;
+}

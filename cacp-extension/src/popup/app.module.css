@@ -11,19 +11,17 @@
 .root {
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
 
-.loading {
-  margin: 0;
+.footer {
+  font-size: 11px;
+  color: #666;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #333;
   text-align: center;
-  color: #aaa;
 }
 
-.workspaceSmoke {
-  display: none;
-}
-
-.logSmoke {
-  display: none;
+.footer strong {
+  color: #888;
 }
