@@ -1,0 +1,25 @@
+.body {
+  width: 420px;
+  margin: 0;
+  padding: 16px;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  color: #fff;
+  background: #1a1a1a;
+}
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.loading {
+  margin: 0;
+  text-align: center;
+  color: #aaa;
+}
+
+.workspaceSmoke {
+  display: none;
+}
