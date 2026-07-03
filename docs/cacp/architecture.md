@@ -51,7 +51,12 @@ cacp-extension/src/
 ├── main-world-logger.js     # Injected into page main world for logger controls
 ├── sites/
 │   ├── base-handler.js      # Config-driven base class (getElement, clickElement, parseTimeString...)
-│   ├── soundcloud.js        # SoundCloud implementation — MSE hooks, MediaSession, DOM fallbacks
+│   ├── soundcloud.js        # SoundCloud handler — lifecycle, transport, delegation
+│   ├── soundcloud/          # SeekController, MediaDetectionController, MediaElementRegistry
+│   │   ├── media-element-registry.js
+│   │   ├── seek-controller.js
+│   │   ├── media-detection-controller.js
+│   │   └── seek-controller.test.js
 │   └── youtube.js           # YouTube implementation
 └── managers/
     ├── site-detector.js         # URL pattern matching, handler registry, createHandlerInstance

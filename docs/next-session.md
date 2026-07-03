@@ -1,6 +1,6 @@
 # Next Session Planning - CACP Development
 
-*Last Updated: July 2, 2026*
+*Last Updated: July 3, 2026*
 
 ## Current Status
 
@@ -35,6 +35,11 @@
 ### July 2, 2026 — Tracklist hardening + MediaStore split (Phases 1–5) ✅
 - CDP preflight, scraper fixture test, cache write locks, `@shared` cue-matching, MediaStore decomposition, server jsg-logger adoption
 - Docs reconciled: `architecture.md` file structure, `logging-system.md` (extension + server)
+
+### July 3, 2026 — SoundCloud handler split + favorite tab cleanup ✅
+- `soundcloud.js` decomposed via composition: `MediaElementRegistry`, `SeekController`, `MediaDetectionController` (1,598 → 743 lines)
+- `computeSeekClickTarget` + 4 `node:test` cases in extension
+- `CACP_KEEP_FAVORITE_TABS_OPEN` env gate on `favoriteMixTrack` (default: close tab)
 
 ### Remaining Tasks
 

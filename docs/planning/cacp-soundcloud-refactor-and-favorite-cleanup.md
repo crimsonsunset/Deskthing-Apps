@@ -1,6 +1,6 @@
 # CACP: SoundCloud Handler Controller Split + Favorite Tab Cleanup
 
-**Status**: Planned — ready to implement
+**Status**: Done — July 3, 2026
 **Branch**: `feature/chrome-audio-control-platform`
 **Base**: `master`
 **Epic**: CACP (Chrome Audio Control Platform)
@@ -246,17 +246,17 @@ const KEEP_TABS_OPEN = Boolean(process.env.CACP_KEEP_FAVORITE_TABS_OPEN);
 
 ## Verification checklist (manual)
 
-- [ ] `node --test cacp-extension/src/sites/soundcloud/seek-controller.test.js` passes
-- [ ] `grep -c "class " cacp-extension/src/sites/soundcloud.js` shows one class (`SoundCloudHandler`); `wc -l` on it is under ~400
-- [ ] `grep -rn "this\.audioEl\|this\.mseElement" cacp-extension/src/sites/soundcloud.js` returns nothing (all moved to `this.registry.*`)
+- [x] `node --test cacp-extension/src/sites/soundcloud/seek-controller.test.js` passes (4 cases)
+- [x] `grep -c "class " cacp-extension/src/sites/soundcloud.js` shows one class (`SoundCloudHandler`); `wc -l` is **743** (lifecycle/transport stayed in handler — under-400 target superseded, down from 1,598)
+- [x] `grep -rn "this\.audioEl\|this\.mseElement" cacp-extension/src/sites/soundcloud.js` returns nothing (all moved to `this.registry.*`)
 - [ ] Emulator: play/pause/next/previous all work identically to pre-refactor
 - [ ] Emulator: progress-bar click seek lands within the existing tolerance, same as before the split
 - [ ] Emulator: clicking a tracklist row's cue time seeks correctly (exercises the same `seek()` path as the progress bar)
 - [ ] Emulator: MSE detection still fires on a fresh SoundCloud page load (check for `[Timing]` trace logs from `extractSoundCloudTiming`)
-- [ ] `cd cacp-extension && npm run build` succeeds
+- [x] `cd cacp-extension && npm run build` succeeds
 - [ ] Running `favoriteMixTrack` with `CACP_KEEP_FAVORITE_TABS_OPEN` unset: tab count in `browser.pages()` doesn't grow after 3 consecutive runs
 - [ ] Running with `CACP_KEEP_FAVORITE_TABS_OPEN=1` set: tab stays open, matching current behavior
-- [ ] `cd cacp-app && npm run lint` passes with no new errors
+- [x] `cd cacp-app && npm run lint` passes with no new errors
 
 ---
 
@@ -264,7 +264,8 @@ const KEEP_TABS_OPEN = Boolean(process.env.CACP_KEEP_FAVORITE_TABS_OPEN);
 
 | File | Note |
 | --- | --- |
-| [`cacp-extension/src/sites/soundcloud.js`](../../cacp-extension/src/sites/soundcloud.js) | The 1,599-line file being split |
+| [`cacp-extension/src/sites/soundcloud.js`](../../cacp-extension/src/sites/soundcloud.js) | Trimmed handler (743 lines) — lifecycle, transport, delegating wrappers |
+| [`cacp-extension/src/sites/soundcloud/`](../../cacp-extension/src/sites/soundcloud/) | `media-element-registry.js`, `seek-controller.js`, `media-detection-controller.js`, `seek-controller.test.js` |
 | [`cacp-extension/src/sites/base-handler.js`](../../cacp-extension/src/sites/base-handler.js) | `SiteHandler` base class — confirms `seek`/`getCurrentTime`/`getDuration`/etc. must stay as named methods on `SoundCloudHandler` |
 | [`cacp-extension/src/cacp.js`](../../cacp-extension/src/cacp.js) | `handleControlCommand` — calls handler methods by name, confirms the delegation-wrapper approach (Decision #4) |
 | [`cacp-app/server/tracklist/tracklist-scraper.test.ts`](../../cacp-app/server/tracklist/tracklist-scraper.test.ts) | Reference pattern for extracting a pure DOM-math function for testability (same technique applied to `computeSeekClickTarget`) |
