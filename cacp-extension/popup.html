@@ -119,6 +119,14 @@
       cursor: not-allowed;
     }
 
+    .global-controls button.favorite-btn:not(:disabled) {
+      background: #e84393;
+    }
+
+    .global-controls button.favorite-btn:not(:disabled):hover {
+      background: #c7357d;
+    }
+
     /* Sources List */
     .sources-section {
       margin-bottom: 16px;
@@ -217,6 +225,15 @@
     .control-btn:disabled {
       opacity: 0.5;
       cursor: not-allowed;
+    }
+
+    .control-btn.favorite-btn {
+      background: #e84393;
+      border-color: #c7357d;
+    }
+
+    .control-btn.favorite-btn:hover {
+      background: #c7357d;
     }
 
     .no-controls {
@@ -407,6 +424,7 @@
     <button id="globalPlay" title="Play (Priority Source)">▶️</button>
     <button id="globalPause" title="Pause (Priority Source)" style="display: none;">⏸️</button>
     <button id="globalNext" title="Next (Priority Source)">⏭️</button>
+    <button id="globalFavorite" title="Like on SoundCloud" class="favorite-btn" disabled>♥</button>
   </div>
 
   <!-- Sources List -->

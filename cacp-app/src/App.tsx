@@ -178,10 +178,13 @@ function TracklistPanel({
                   </button>
                   <button
                     type="button"
-                    className="cacp-tracklist-favorite-button"
-                    aria-label={`Favorite ${track.artist ? `${track.artist} — ` : ''}${track.title}`}
+                    className="cacp-like-btn"
+                    aria-label={`Like ${track.artist ? `${track.artist} — ` : ''}${track.title}`}
+                    title="Like"
                     disabled={!canFavorite || favoriteStatus === 'loading'}
-                    onClick={() => {
+                    onClick={(event) => {
+                      event.stopPropagation();
+
                       if (!row.rowId) {
                         return;
                       }
@@ -189,7 +192,9 @@ function TracklistPanel({
                       onFavoriteTrack?.(row.rowId);
                     }}
                   >
-                    ♥
+                    <span className="cacp-like-btn-icon" aria-hidden="true">
+                      ♥
+                    </span>
                   </button>
                 </li>
               );
@@ -206,7 +211,7 @@ function TracklistPanel({
 }
 
 /**
- * CACP emulator now-playing shell: mix on the left, in-mix tracklist on the right.
+ * CACP emulator now-playing shell: player on top, full-width tracklist below.
  */
 export default function App() {
   const { song, isPlaying, sendTransport, togglePlayPause, hasAbility, sendSeek } =
@@ -371,12 +376,15 @@ export default function App() {
             <div className="cacp-meta-actions">
               <button
                 type="button"
-                className="cacp-favorite-button"
-                aria-label="Favorite current track on SoundCloud"
+                className="cacp-like-btn"
+                aria-label="Like current track on SoundCloud"
+                title="Like"
                 disabled={favoriteStatus === 'loading'}
                 onClick={favoriteCurrent}
               >
-                ♥ Favorite
+                <span className="cacp-like-btn-icon" aria-hidden="true">
+                  ♥
+                </span>
               </button>
               <span
                 className={`cacp-playing-badge${isPlaying ? '' : ' is-paused'}`}

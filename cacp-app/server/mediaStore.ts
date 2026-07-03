@@ -122,6 +122,7 @@ export class CACPMediaStore {
       getWebSocket: () => this.extensionWebSocket,
       processArtwork: (url, title, artist) => this.processArtwork(url, title, artist),
       onRefreshDeskThing: () => this.sendExtensionDataToDeskThing(),
+      handleFavoriteStandalone: () => this.handleFavoriteStandalone(),
     });
   }
 
@@ -192,8 +193,8 @@ export class CACPMediaStore {
   }
 
   /** Favorites the current standalone track via the extension. */
-  public handleFavoriteStandalone() {
-    this.sendCommandToExtension('favorite', {}, 'Favorite requested');
+  public handleFavoriteStandalone(): boolean {
+    return this.sendCommandToExtension('favorite', {}, 'Favorite requested');
   }
 
   /** Seeks playback to the given position via the extension. */

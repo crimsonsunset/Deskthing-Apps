@@ -76,6 +76,11 @@ class CACPPopup {
     if (globalNextBtn) globalNextBtn.addEventListener('click', () => this.sendGlobalCommand('next'));
     if (globalPrevBtn) globalPrevBtn.addEventListener('click', () => this.sendGlobalCommand('previous'));
 
+    const globalFavoriteBtn = document.getElementById('globalFavorite');
+    if (globalFavoriteBtn) {
+      globalFavoriteBtn.addEventListener('click', () => this.sendGlobalLike());
+    }
+
     // Refresh button
     const refreshBtn = document.getElementById('refreshBtn');
     if (refreshBtn) refreshBtn.addEventListener('click', () => this.refreshGlobalState());
@@ -187,6 +192,14 @@ class CACPPopup {
     
     // Update global controls
     this.updateGlobalControls(currentPriority);
+
+    if (this.globalState.favoriteStatus === 'ready') {
+      this.log('Track liked on SoundCloud');
+      chrome.runtime.sendMessage({ type: 'reset-favorite-status' }).catch(() => {});
+    } else if (this.globalState.favoriteStatus === 'error' && this.globalState.favoriteError) {
+      this.log('Like failed: ' + this.globalState.favoriteError, 'error');
+      chrome.runtime.sendMessage({ type: 'reset-favorite-status' }).catch(() => {});
+    }
   }
 
   /**
@@ -206,6 +219,16 @@ class CACPPopup {
 
     // Disable global controls
     this.setGlobalControlsEnabled(false);
+  }
+
+  /**
+   * Whether the popup can like the current SoundCloud source.
+   * @param {object|null} source - Active media source from background.
+   * @returns {boolean}
+   */
+  canLikeSource(source) {
+    if (!source?.isActive || !source.canControl) return false;
+    return source.site === 'SoundCloud';
   }
 
   /**
@@ -324,6 +347,8 @@ class CACPPopup {
     const isPlaying = source.isPlaying;
     const canControl = source.canControl;
     const isActive = source.isActive;
+    const isInMix = isPriority && !!this.globalState?.enrichedDisplay?.title;
+    const showLike = this.canLikeSource(source);
     const pct = source.duration > 0 ? Math.round((source.currentTime / source.duration) * 100) : 0;
     
     const priorityBadge = isPriority ? '<span class="priority-badge">★ Priority</span>' : '';
@@ -340,7 +365,8 @@ class CACPPopup {
       '    <div class="source-controls">' + (canControl && isActive ? (
       '      <button class="control-btn prev-btn" data-command="previous" data-tab-id="' + source.tabId + '" title="Previous">⏮️</button>' +
       '      <button class="control-btn ' + (isPlaying ? 'pause-btn' : 'play-btn') + '" data-command="' + (isPlaying ? 'pause' : 'play') + '" data-tab-id="' + source.tabId + '" title="' + (isPlaying ? 'Pause' : 'Play') + '">' + (isPlaying ? '⏸️' : '▶️') + '</button>' +
-      '      <button class="control-btn next-btn" data-command="next" data-tab-id="' + source.tabId + '" title="Next">⏭️</button>'
+      '      <button class="control-btn next-btn" data-command="next" data-tab-id="' + source.tabId + '" title="Next">⏭️</button>' +
+      (showLike ? '      <button class="control-btn favorite-btn" data-action="like" data-tab-id="' + source.tabId + '" data-in-mix="' + (isPriority && isInMix ? '1' : '0') + '" title="Like on SoundCloud">♥</button>' : '')
       ) : '<span class="no-controls">' + (!canControl ? 'No controls' : 'Not ready') + '</span>') +
       '    </div>' +
       '  </div>' +
@@ -371,6 +397,19 @@ class CACPPopup {
         this.sendSourceCommand(command, targetTabId);
       });
     });
+
+    const likeBtn = document.querySelector('[data-tab-id="' + tabId + '"][data-action="like"]');
+    if (likeBtn) {
+      likeBtn.addEventListener('click', () => {
+        const targetTabId = parseInt(likeBtn.dataset.tabId, 10);
+        const isInMix = likeBtn.dataset.inMix === '1';
+        if (isInMix) {
+          void this.sendGlobalLike();
+          return;
+        }
+        void this.sendSourceLike(targetTabId);
+      });
+    }
 
     // Set priority button
     const priorityBtn = document.querySelector('.set-priority-btn[data-tab-id="' + tabId + '"]');
@@ -403,6 +442,14 @@ class CACPPopup {
     const hasActivePriority = currentPriority && currentPriority.isActive;
     this.setGlobalControlsEnabled(hasActivePriority);
 
+    const globalFavoriteBtn = document.getElementById('globalFavorite');
+    const canLike = this.canLikeSource(currentPriority);
+    const isLoading = this.globalState?.favoriteStatus === 'loading';
+    if (globalFavoriteBtn) {
+      globalFavoriteBtn.disabled = !canLike || isLoading;
+      globalFavoriteBtn.title = isLoading ? 'Liking…' : 'Like on SoundCloud';
+    }
+
     if (hasActivePriority) {
       // Update play/pause button state
       const globalPlayBtn = document.getElementById('globalPlay');
@@ -428,6 +475,53 @@ class CACPPopup {
     globalControls.forEach(btn => {
       btn.disabled = !enabled;
     });
+  }
+
+  /**
+   * Send like command to highest priority source (via app server when in-mix).
+   */
+  async sendGlobalLike() {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'like-track' });
+
+      if (response?.pending) {
+        this.log('Like requested…');
+        setTimeout(() => this.refreshGlobalState(), 100);
+        return;
+      }
+
+      if (response?.success) {
+        this.log('Like sent');
+      } else {
+        this.log('Like failed: ' + (response?.error || 'unknown'), 'error');
+      }
+
+      setTimeout(() => this.refreshGlobalState(), 100);
+    } catch (error) {
+      this.log('Failed to send like: ' + error.message, 'error');
+    }
+  }
+
+  /**
+   * Send standalone like to a specific SoundCloud tab.
+   * @param {number} tabId - Target tab id.
+   */
+  async sendSourceLike(tabId) {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'control-media',
+        command: 'favorite',
+        tabId,
+      });
+
+      if (response?.success) {
+        this.log('Like sent to tab ' + tabId);
+      } else {
+        this.log('Like failed for tab ' + tabId + ': ' + (response?.error || 'unknown'), 'error');
+      }
+    } catch (error) {
+      this.log('Failed to send like to tab ' + tabId + ': ' + error.message, 'error');
+    }
   }
 
   /**

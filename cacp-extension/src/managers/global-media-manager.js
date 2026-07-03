@@ -21,6 +21,8 @@ export class GlobalMediaManager {
     this.currentPriority = null; // Currently highest priority source
     this.siteHandlers = new Map(); // tabId -> handler info
     this.enrichedDisplay = null; // Server-provided Format A metadata overlay
+    this.favoriteStatus = 'idle';
+    this.favoriteError = null;
     this.updateInterval = null;
     this.onPriorityChange = onPriorityChange || (() => {});
 
@@ -74,6 +76,17 @@ export class GlobalMediaManager {
       inMixOrder: display?.inMixOrder,
     });
     this.notifyPopup('sources-updated', this.getSourcesList());
+  }
+
+  /**
+   * Stores the latest like/favorite action status for the popup.
+   * @param {'idle' | 'loading' | 'ready' | 'error'} status - Favorite pipeline status.
+   * @param {string | null} [error] - Error message when status is error.
+   */
+  setFavoriteStatus(status, error = null) {
+    this.favoriteStatus = status;
+    this.favoriteError = error;
+    this.notifyPopup('favorite-updated');
   }
 
   /**
@@ -279,6 +292,8 @@ export class GlobalMediaManager {
       currentPriority: this.currentPriority,
       totalSources: this.activeSources.size,
       enrichedDisplay: this.enrichedDisplay,
+      favoriteStatus: this.favoriteStatus,
+      favoriteError: this.favoriteError,
     };
   }
 }

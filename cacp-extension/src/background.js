@@ -27,6 +27,9 @@ const bridgeManager = new BridgeManager({
   sendControlCommand: (command, tabId, time) => mediaManager.sendControlCommand(command, tabId, time),
   setEnrichedDisplay: (display) => mediaManager.setEnrichedDisplay(display),
   getCurrentPriority: () => mediaManager.currentPriority,
+  onFavoriteResult: (result) => {
+    mediaManager.setFavoriteStatus(result.status, result.error ?? null);
+  },
 });
 
 mediaManager.onPriorityChange = (priority) => bridgeManager.pushPriority(priority);
@@ -92,6 +95,39 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       mediaManager.sendControlCommand(message.command, message.tabId, message.time)
         .then(result => sendResponse(result));
       return true; // Async response
+
+    case 'like-track': {
+      const priority = mediaManager.currentPriority;
+      if (!priority || priority.site !== 'SoundCloud' || !priority.isActive) {
+        sendResponse({ success: false, error: 'No active SoundCloud source' });
+        break;
+      }
+
+      mediaManager.setFavoriteStatus('loading', null);
+
+      if (bridgeManager.requestFavoriteFromApp()) {
+        sendResponse({ success: true, pending: true });
+        break;
+      }
+
+      if (!mediaManager.enrichedDisplay?.title) {
+        mediaManager.sendControlCommand('favorite')
+          .then((result) => {
+            mediaManager.setFavoriteStatus(result?.success ? 'ready' : 'error', result?.error ?? null);
+            sendResponse(result);
+          });
+        return true;
+      }
+
+      mediaManager.setFavoriteStatus('error', 'CACP app not connected');
+      sendResponse({ success: false, error: 'CACP app not connected' });
+      break;
+    }
+
+    case 'reset-favorite-status':
+      mediaManager.setFavoriteStatus('idle', null);
+      sendResponse({ success: true });
+      break;
 
     case 'set-priority-source': {
       // Popup manually setting priority

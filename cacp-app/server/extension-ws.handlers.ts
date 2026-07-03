@@ -1,6 +1,9 @@
 import type { WebSocket } from 'ws';
 import { sendDeskThingError, sendDeskThingWarning } from './deskthing-log.helpers.js';
 import { mediastoreLogger } from './logger.helpers.js';
+import { favoriteMixTrack } from './tracklist/tracklist-favorite.js';
+import { resolveMixFavoriteTarget } from './tracklist/tracklist-favorite-target.helpers.js';
+import { errorFields } from './tracklist/tracklist-log.helpers.js';
 
 /**
  * How long after a seek to keep suppressing extension position reports that
@@ -31,7 +34,7 @@ export interface ExtensionMediaData {
  * Inbound WebSocket message shapes from the Chrome extension.
  */
 export interface ExtensionMessage {
-  type: 'mediaData' | 'timeupdate' | 'connection' | 'command-result' | 'ping';
+  type: 'mediaData' | 'timeupdate' | 'connection' | 'command-result' | 'ping' | 'favorite-request';
   site?: string;
   sourceId?: string | number;
   data?: ExtensionMediaData;
@@ -80,6 +83,7 @@ export type ExtensionWsHandlerContext = {
     artist?: string,
   ) => Promise<string | undefined>;
   onRefreshDeskThing: () => void;
+  handleFavoriteStandalone: () => boolean;
 };
 
 /**
@@ -111,6 +115,32 @@ export function sendDisplayMetadataToExtension(
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     sendDeskThingWarning(`⚠️ [CACP-MediaStore] Failed to send displayMetadata: ${message}`);
+  }
+}
+
+/**
+ * Pushes a favorite action outcome to the extension popup via the WS bridge.
+ * @param {WebSocket | null} ws - Active extension socket, if any
+ * @param {{ status: 'ready' | 'error'; error?: string }} payload - Favorite result
+ */
+export function sendFavoriteResultToExtension(
+  ws: WebSocket | null,
+  payload: { status: 'ready' | 'error'; error?: string },
+): void {
+  if (!ws) {
+    return;
+  }
+
+  try {
+    ws.send(JSON.stringify({
+      type: 'favorite-result',
+      status: payload.status,
+      error: payload.error,
+      timestamp: Date.now(),
+    }));
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    sendDeskThingWarning(`⚠️ [CACP-MediaStore] Failed to send favorite-result: ${message}`);
   }
 }
 
@@ -296,10 +326,49 @@ export async function handleExtensionWsMessage(
             cachedDurationSeconds: ctx.extensionData.duration ?? 0,
           });
         }
+        if (action === 'favorite') {
+          sendFavoriteResultToExtension(ctx.getWebSocket(), {
+            status: message.success ? 'ready' : 'error',
+            error: message.error,
+          });
+        }
         if (!message.success) {
           sendDeskThingError(
             `❌ [CACP-MediaStore] Command ${action} failed on extension side: ${message.error || JSON.stringify(message.detail) || 'unknown reason'}`,
           );
+        }
+        break;
+      }
+
+      case 'favorite-request': {
+        const mixTarget = resolveMixFavoriteTarget(ctx.extensionData);
+        if (mixTarget) {
+          mediastoreLogger.info('Extension favorite-request (in-mix)', mixTarget);
+          void (async () => {
+            try {
+              const result = await favoriteMixTrack(mixTarget.sourceUrl, mixTarget.rowId);
+              sendFavoriteResultToExtension(ctx.getWebSocket(), {
+                status: result.success ? 'ready' : 'error',
+                error: result.error,
+              });
+            } catch (err: unknown) {
+              mediastoreLogger.error('Extension in-mix favorite threw', errorFields(err));
+              sendFavoriteResultToExtension(ctx.getWebSocket(), {
+                status: 'error',
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          })();
+          break;
+        }
+
+        mediastoreLogger.info('Extension favorite-request (standalone)');
+        const sent = ctx.handleFavoriteStandalone();
+        if (!sent) {
+          sendFavoriteResultToExtension(ctx.getWebSocket(), {
+            status: 'error',
+            error: 'No extension connection for standalone favorite.',
+          });
         }
         break;
       }
