@@ -1,23 +1,18 @@
-import { useState } from 'react';
 import {
   AUDIO_REQUESTS,
   SongAbilities,
 } from '@deskthing/types';
+import { ProgressBar, TracklistPanel } from 'cacp-ui';
 import { useCacpMusic } from './hooks/use-cacp-music.hook';
 import { useCacpFavorite } from './hooks/use-cacp-favorite.hook';
 import {
-  findCurrentTracklistTrack,
-  formatCueSeconds,
-  getTrackDurationSeconds,
   useCacpTracklist,
-  type TracklistResultView,
-  type TracklistState,
   resolveMixLookupIdentity,
 } from './hooks/use-cacp-tracklist.hook';
+import type { TracklistPanelTrack } from 'cacp-ui';
 
-type TracklistRowWithRowId = TracklistResultView['tracks'][number] & {
-  rowId?: string;
-};
+const DEV_LOOKUP_ARTIST = 'Nora En Pure';
+const DEV_LOOKUP_TITLE = 'Purified #512';
 
 /**
  * Dev-only client log for emulator seek diagnostics.
@@ -37,197 +32,6 @@ function logSeekClient(message: string, context?: Record<string, unknown>): void
   console.debug(`[CACP-Seek] ${message}`);
 }
 
-const DEV_LOOKUP_ARTIST = 'Nora En Pure';
-const DEV_LOOKUP_TITLE = 'Purified #512';
-
-/**
- * Format milliseconds as m:ss for the progress display.
- */
-const formatMs = (ms: number | null | undefined): string => {
-  if (ms == null || Number.isNaN(ms) || ms < 0) {
-    return '0:00';
-  }
-
-  const totalSeconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-};
-
-/**
- * Compute progress percentage from track position and duration.
- */
-const getProgressPercent = (
-  progressMs: number | null | undefined,
-  durationMs: number | null | undefined,
-): number => {
-  if (
-    progressMs == null ||
-    durationMs == null ||
-    durationMs <= 0 ||
-    progressMs < 0
-  ) {
-    return 0;
-  }
-
-  return Math.min(100, (progressMs / durationMs) * 100);
-};
-
-/**
- * Renders the 1001tracklists lookup panel (status, tracks, current in-mix highlight).
- */
-function TracklistPanel({
-  status,
-  result,
-  error,
-  progressMs,
-  mixDurationSeconds,
-  onDevLookup,
-  onLookupCurrent,
-  onSeekToTrack,
-  onFavoriteTrack,
-  favoriteStatus,
-  currentArtist,
-  currentTitle,
-}: {
-  status: TracklistState['status'];
-  result: TracklistResultView | null;
-  error: string | null;
-  progressMs?: number | null;
-  mixDurationSeconds?: number | null;
-  onDevLookup: () => void;
-  onLookupCurrent?: () => void;
-  onSeekToTrack?: (track: {
-    order: number;
-    cueSeconds: number;
-    artist: string;
-    title: string;
-  }) => void;
-  onFavoriteTrack?: (rowId: string) => void;
-  favoriteStatus?: 'idle' | 'loading' | 'ready' | 'error';
-  currentArtist?: string | null;
-  currentTitle?: string | null;
-}) {
-  const currentTrack = result
-    ? findCurrentTracklistTrack(result.tracks, progressMs)
-    : null;
-
-  return (
-    <section className="cacp-tracklist" aria-label="In-mix tracklist">
-      <div className="cacp-tracklist-header">
-        <h2>1001Tracklists</h2>
-        <div className="cacp-tracklist-actions">
-          {onLookupCurrent && currentArtist && currentTitle ? (
-            <button type="button" onClick={onLookupCurrent} disabled={status === 'loading'}>
-              Lookup current mix
-            </button>
-          ) : null}
-          <button type="button" onClick={onDevLookup} disabled={status === 'loading'}>
-            Test Nora #512
-          </button>
-        </div>
-      </div>
-
-      {status === 'loading' ? (
-        <p className="cacp-tracklist-status">Looking up tracklist…</p>
-      ) : null}
-
-      {status === 'error' && error ? (
-        <p className="cacp-tracklist-error">{error}</p>
-      ) : null}
-
-      {status === 'idle' && !result ? (
-        <p className="cacp-tracklist-status">
-          Auto-lookup runs when a mix starts playing. Or hit Test Nora #512.
-        </p>
-      ) : null}
-
-      {result ? (
-        <>
-          <p className="cacp-tracklist-mix-title">{result.mixTitle}</p>
-          {currentTrack ? (
-            <p className="cacp-tracklist-now">
-              Now in mix: {currentTrack.artist} — {currentTrack.title}
-            </p>
-          ) : null}
-          <ol className="cacp-tracklist-rows">
-            {result.tracks.map((track, index) => {
-              const row = track as TracklistRowWithRowId;
-              const isActive = currentTrack?.order === track.order;
-              const canSeek = onSeekToTrack && track.cueSeconds != null;
-              const canFavorite = Boolean(onFavoriteTrack && row.rowId);
-              const durationSeconds = getTrackDurationSeconds(
-                result.tracks,
-                index,
-                mixDurationSeconds,
-              );
-
-              return (
-                <li
-                  key={`${track.order}-${track.cueSeconds}-${track.title}`}
-                  className={isActive ? 'is-active' : undefined}
-                >
-                  <button
-                    type="button"
-                    className="cacp-tracklist-row-button"
-                    disabled={!canSeek}
-                    onClick={() => {
-                      if (track.cueSeconds == null) {
-                        return;
-                      }
-
-                      onSeekToTrack?.({
-                        order: track.order,
-                        cueSeconds: track.cueSeconds,
-                        artist: track.artist,
-                        title: track.title,
-                      });
-                    }}
-                  >
-                    <span className="cacp-tracklist-cue">{formatCueSeconds(track.cueSeconds)}</span>
-                    <span className="cacp-tracklist-track">
-                      {track.artist ? `${track.artist} — ` : ''}
-                      {track.title}
-                    </span>
-                    <span className="cacp-tracklist-duration">
-                      {durationSeconds != null ? formatCueSeconds(durationSeconds) : ''}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    className="cacp-like-btn"
-                    aria-label={`Like ${track.artist ? `${track.artist} — ` : ''}${track.title}`}
-                    title="Like"
-                    disabled={!canFavorite || favoriteStatus === 'loading'}
-                    onClick={(event) => {
-                      event.stopPropagation();
-
-                      if (!row.rowId) {
-                        return;
-                      }
-
-                      onFavoriteTrack?.(row.rowId);
-                    }}
-                  >
-                    <span className="cacp-like-btn-icon" aria-hidden="true">
-                      ♥
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ol>
-        </>
-      ) : null}
-
-      {status === 'ready' && !result ? (
-        <p className="cacp-tracklist-status">No 1001tracklists match for this mix.</p>
-      ) : null}
-    </section>
-  );
-}
-
 /**
  * CACP emulator now-playing shell: player on top, full-width tracklist below.
  */
@@ -235,7 +39,6 @@ export default function App() {
   const { song, isPlaying, sendTransport, togglePlayPause, hasAbility, sendSeek } =
     useCacpMusic();
   const { status, result, error, lookupTracklist } = useCacpTracklist();
-  const [hoverRatio, setHoverRatio] = useState<number | null>(null);
 
   const isInMix = Boolean(resolveMixLookupIdentity(song?.artist, song?.track_name));
   const { status: favoriteStatus, error: favoriteError, favoriteCurrent, favoriteTrack } =
@@ -257,12 +60,11 @@ export default function App() {
   /**
    * Seek the mix to a tracklist cue time and log the full client-side context.
    */
-  const handleSeekToTrack = (track: {
-    order: number;
-    cueSeconds: number;
-    artist: string;
-    title: string;
-  }) => {
+  const handleSeekToTrack = (track: TracklistPanelTrack) => {
+    if (track.cueSeconds == null) {
+      return;
+    }
+
     const targetMs = track.cueSeconds * 1000;
     const durationMs = song?.track_duration;
     const progressMs = song?.track_progress;
@@ -285,6 +87,8 @@ export default function App() {
     sendSeek(targetMs);
   };
 
+  const mixIdentity = resolveMixLookupIdentity(song?.artist, song?.track_name);
+
   const tracklistPanel = (
     <TracklistPanel
       status={status}
@@ -294,13 +98,26 @@ export default function App() {
       mixDurationSeconds={
         song?.track_duration != null ? song.track_duration / 1000 : null
       }
-      onDevLookup={handleDevLookup}
-      onLookupCurrent={song ? handleLookupCurrent : undefined}
+      lookupActions={
+        <>
+          {mixIdentity ? (
+            <button
+              type="button"
+              onClick={handleLookupCurrent}
+              disabled={status === 'loading'}
+            >
+              Lookup current mix
+            </button>
+          ) : null}
+          <button type="button" onClick={handleDevLookup} disabled={status === 'loading'}>
+            Test Nora #512
+          </button>
+        </>
+      }
+      idleMessage="Auto-lookup runs when a mix starts playing. Or hit Test Nora #512."
       onSeekToTrack={song ? handleSeekToTrack : undefined}
       onFavoriteTrack={result ? favoriteTrack : undefined}
       favoriteStatus={favoriteStatus}
-      currentArtist={song?.artist}
-      currentTitle={song?.track_name}
     />
   );
 
@@ -319,53 +136,23 @@ export default function App() {
     );
   }
 
-  const progressPercent = getProgressPercent(
-    song.track_progress,
-    song.track_duration,
-  );
-
   /**
-   * Compute the 0-1 ratio of a pointer position along the progress bar's width.
-   * @param {React.MouseEvent<HTMLDivElement>} event
+   * Send a seek request from the progress bar click target.
    */
-  const getRatioFromEvent = (
-    event: React.MouseEvent<HTMLDivElement>,
-  ): number => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    return Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
-  };
-
-  /**
-   * Compute the target position from a progress bar click and send a seek request.
-   * @param {React.MouseEvent<HTMLDivElement>} event
-   */
-  const handleProgressBarClick = (
-    event: React.MouseEvent<HTMLDivElement>,
-  ) => {
+  const handleProgressSeek = (targetMs: number) => {
     const durationMs = song.track_duration;
     if (durationMs == null || durationMs <= 0) {
       logSeekClient('App progress click — no track_duration');
       return;
     }
 
-    const ratio = getRatioFromEvent(event);
-    const targetMs = Math.round(durationMs * ratio);
-    logSeekClient('App progress click', { ratio: Number(ratio.toFixed(3)), targetMs, durationMs });
+    const ratio = targetMs / durationMs;
+    logSeekClient('App progress click', {
+      ratio: Number(ratio.toFixed(3)),
+      targetMs,
+      durationMs,
+    });
     sendSeek(targetMs);
-  };
-
-  /**
-   * Track the pointer's position over the progress bar to preview the seek target.
-   * @param {React.MouseEvent<HTMLDivElement>} event
-   */
-  const handleProgressBarHover = (
-    event: React.MouseEvent<HTMLDivElement>,
-  ) => {
-    if (song.track_duration == null || song.track_duration <= 0) {
-      return;
-    }
-
-    setHoverRatio(getRatioFromEvent(event));
   };
 
   return (
@@ -414,41 +201,11 @@ export default function App() {
           </div>
         </section>
 
-        <section className="cacp-progress">
-          <div
-            className="cacp-progress-bar-wrapper"
-            onMouseMove={handleProgressBarHover}
-            onMouseLeave={() => setHoverRatio(null)}
-          >
-            {hoverRatio != null && (
-              <div
-                className="cacp-progress-hover-tooltip"
-                style={{ left: `${hoverRatio * 100}%` }}
-              >
-                {formatMs((song.track_duration ?? 0) * hoverRatio)}
-              </div>
-            )}
-            <div
-              className="cacp-progress-bar cacp-progress-bar-interactive"
-              onClick={handleProgressBarClick}
-            >
-              <div
-                className="cacp-progress-fill"
-                style={{ width: `${progressPercent}%` }}
-              />
-              {hoverRatio != null && (
-                <div
-                  className="cacp-progress-hover-marker"
-                  style={{ left: `${hoverRatio * 100}%` }}
-                />
-              )}
-            </div>
-          </div>
-          <div className="cacp-progress-times">
-            <span>{formatMs(song.track_progress)}</span>
-            <span>{formatMs(song.track_duration)}</span>
-          </div>
-        </section>
+        <ProgressBar
+          progressMs={song.track_progress ?? 0}
+          durationMs={song.track_duration ?? 0}
+          onSeek={handleProgressSeek}
+        />
 
         <nav className="cacp-transport" aria-label="Playback controls">
           <button

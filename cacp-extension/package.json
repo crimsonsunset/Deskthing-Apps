@@ -23,6 +23,7 @@
   "description": "CACP - Chrome Audio Control Platform with Pino logging",
   "dependencies": {
     "cacp-shared": "*",
+    "cacp-ui": "*",
     "@crimsonsunset/jsg-logger": "^1.8.9",
     "pino": "^9.7.0"
   },

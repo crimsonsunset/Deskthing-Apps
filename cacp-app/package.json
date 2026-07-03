@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "cacp-shared": "*",
+    "cacp-ui": "*",
     "@crimsonsunset/jsg-logger": "^1.8.9",
     "@deskthing/client": "latest",
     "@deskthing/server": "latest",
