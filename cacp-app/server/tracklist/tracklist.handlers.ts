@@ -70,6 +70,10 @@ export function sendTracklistToClient(payload: TracklistClientPayload): void {
     request: 'result',
     payload,
   });
+
+  void import('../mediaStore.js').then(({ CACPMediaStore }) => {
+    CACPMediaStore.getInstance().relayTracklistToExtension(payload);
+  });
 }
 
 /**

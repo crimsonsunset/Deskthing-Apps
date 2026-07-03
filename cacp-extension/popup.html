@@ -127,6 +127,138 @@
       background: #c7357d;
     }
 
+    /* Tracklist panel */
+    .tracklist-section {
+      margin-bottom: 16px;
+      padding: 12px;
+      background: #2a2a2a;
+      border-radius: 8px;
+      border: 1px solid #333;
+    }
+
+    .tracklist-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .tracklist-header-title {
+      font-size: 12px;
+      font-weight: bold;
+      color: #fff;
+    }
+
+    .tracklist-lookup-btn {
+      padding: 4px 8px;
+      background: #6c5ce7;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 10px;
+      white-space: nowrap;
+    }
+
+    .tracklist-lookup-btn:hover:not(:disabled) {
+      background: #5b4cdb;
+    }
+
+    .tracklist-lookup-btn:disabled {
+      background: #333;
+      color: #666;
+      cursor: not-allowed;
+    }
+
+    .tracklist-status,
+    .tracklist-mix-title,
+    .tracklist-now {
+      margin: 0 0 8px;
+      font-size: 11px;
+      color: #aaa;
+    }
+
+    .tracklist-error {
+      margin: 0 0 8px;
+      font-size: 11px;
+      color: #fca5a5;
+    }
+
+    .tracklist-mix-title {
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .tracklist-now {
+      color: #86efac;
+    }
+
+    .tracklist-rows {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      max-height: 220px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .tracklist-rows li {
+      border-radius: 4px;
+    }
+
+    .tracklist-rows li.is-active {
+      background: #1a2332;
+      outline: 1px solid #6c5ce7;
+    }
+
+    .tracklist-row-button {
+      display: flex;
+      width: 100%;
+      gap: 8px;
+      align-items: baseline;
+      padding: 5px 6px;
+      border: none;
+      border-radius: 4px;
+      background: none;
+      color: #ddd;
+      font-size: 10px;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .tracklist-row-button:hover:not(:disabled) {
+      background: #333;
+    }
+
+    .tracklist-row-button:disabled {
+      cursor: default;
+      opacity: 0.7;
+    }
+
+    .tracklist-cue {
+      flex: 0 0 36px;
+      color: #888;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .tracklist-track {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .tracklist-duration {
+      flex: 0 0 36px;
+      text-align: right;
+      color: #666;
+      font-variant-numeric: tabular-nums;
+    }
+
     /* Sources List */
     .sources-section {
       margin-bottom: 16px;
@@ -441,6 +573,17 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- Tracklist -->
+  <div class="tracklist-section" id="tracklistSection">
+    <div class="tracklist-header">
+      <span class="tracklist-header-title">1001Tracklists</span>
+      <button id="tracklistLookupBtn" class="tracklist-lookup-btn" type="button" disabled>
+        Lookup current mix
+      </button>
+    </div>
+    <div id="tracklistPanel"></div>
   </div>
 
   <!-- Debug Section -->

@@ -73,7 +73,7 @@ Available Components: cacp, soundcloud, youtube
         // Also expose a general CACP object for debugging
         window.CACP = window.CACP || {};
         window.CACP.logger = loggerControls;
-        window.CACP.version = '1.1.4';
+        window.CACP.version = '1.2.0';
         window.CACP.context = 'main-world';
         window.CACP.injected = new Date().toISOString();
         

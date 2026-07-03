@@ -9,9 +9,11 @@ import { planExtensionSongSync } from "./tracklist/tracklist-song-enrichment.hel
 import {
   handleExtensionWsMessage,
   sendDisplayMetadataToExtension,
+  sendTracklistResultToExtension,
   type ExtensionDataState,
   type ExtensionMessage,
 } from "./extension-ws.handlers.js";
+import type { TracklistClientPayload } from "./tracklist/tracklist.handlers.js";
 
 export class CACPMediaStore {
   private static instance: CACPMediaStore;
@@ -287,6 +289,30 @@ export class CACPMediaStore {
     });
     this.lastSentPayload = null;
     this.sendExtensionDataToDeskThing();
+  }
+
+  /**
+   * Relays tracklist lookup status to the extension popup over the WS bridge.
+   * @param {TracklistClientPayload} payload - Current lookup status and result.
+   */
+  public relayTracklistToExtension(payload: TracklistClientPayload): void {
+    sendTracklistResultToExtension(this.extensionWebSocket, {
+      status: payload.status,
+      error: payload.error,
+      result: payload.result
+        ? {
+            mixTitle: payload.result.mixTitle,
+            sourceUrl: payload.result.sourceUrl,
+            tracks: payload.result.tracks.map((track) => ({
+              order: track.order,
+              cueSeconds: track.cueSeconds,
+              artist: track.artist,
+              title: track.title,
+              rowId: track.rowId,
+            })),
+          }
+        : null,
+    });
   }
 
   /** Clears connection and cached extension state. */

@@ -30,6 +30,13 @@ const bridgeManager = new BridgeManager({
   onFavoriteResult: (result) => {
     mediaManager.setFavoriteStatus(result.status, result.error ?? null);
   },
+  onTracklistResult: (result) => {
+    mediaManager.setTracklistState({
+      status: result.status,
+      error: result.error ?? null,
+      result: result.result ?? null,
+    });
+  },
 });
 
 mediaManager.onPriorityChange = (priority) => bridgeManager.pushPriority(priority);
@@ -126,6 +133,40 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     case 'reset-favorite-status':
       mediaManager.setFavoriteStatus('idle', null);
+      sendResponse({ success: true });
+      break;
+
+    case 'lookup-tracklist': {
+      const lookupPriority = mediaManager.currentPriority;
+      if (!lookupPriority || !lookupPriority.isActive) {
+        sendResponse({ success: false, error: 'No active media source' });
+        break;
+      }
+
+      const lookupTitle = lookupPriority.trackInfo?.title?.trim();
+      if (!lookupTitle || lookupTitle === 'Unknown Track') {
+        sendResponse({ success: false, error: 'No track title available for lookup' });
+        break;
+      }
+
+      mediaManager.setTracklistState({ status: 'loading', error: null, result: null });
+
+      if (bridgeManager.requestTracklistLookupFromApp()) {
+        sendResponse({ success: true, pending: true });
+        break;
+      }
+
+      mediaManager.setTracklistState({
+        status: 'error',
+        error: 'CACP app not connected',
+        result: null,
+      });
+      sendResponse({ success: false, error: 'CACP app not connected' });
+      break;
+    }
+
+    case 'reset-tracklist-lookup-status':
+      mediaManager.setTracklistState({ status: 'idle' });
       sendResponse({ success: true });
       break;
 

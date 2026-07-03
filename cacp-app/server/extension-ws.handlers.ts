@@ -4,6 +4,7 @@ import { mediastoreLogger } from './logger.helpers.js';
 import { favoriteMixTrack } from './tracklist/tracklist-favorite.js';
 import { resolveMixFavoriteTarget } from './tracklist/tracklist-favorite-target.helpers.js';
 import { errorFields } from './tracklist/tracklist-log.helpers.js';
+import { runTracklistLookup } from './tracklist/tracklist.handlers.js';
 
 /**
  * How long after a seek to keep suppressing extension position reports that
@@ -34,7 +35,7 @@ export interface ExtensionMediaData {
  * Inbound WebSocket message shapes from the Chrome extension.
  */
 export interface ExtensionMessage {
-  type: 'mediaData' | 'timeupdate' | 'connection' | 'command-result' | 'ping' | 'favorite-request';
+  type: 'mediaData' | 'timeupdate' | 'connection' | 'command-result' | 'ping' | 'favorite-request' | 'tracklist-request';
   site?: string;
   sourceId?: string | number;
   data?: ExtensionMediaData;
@@ -143,6 +144,52 @@ export function sendFavoriteResultToExtension(
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     sendDeskThingWarning(`⚠️ [CACP-MediaStore] Failed to send favorite-result: ${message}`);
+  }
+}
+
+/**
+ * Slim tracklist row relayed to the extension popup over the WS bridge.
+ */
+export type ExtensionTracklistTrack = {
+  order: number;
+  cueSeconds: number | null;
+  artist: string;
+  title: string;
+  rowId?: string;
+};
+
+/**
+ * Pushes tracklist lookup status to the extension popup via the WS bridge.
+ * @param {WebSocket | null} ws - Active extension socket, if any
+ * @param {{ status: 'idle' | 'loading' | 'ready' | 'error'; error?: string; result?: { mixTitle: string; sourceUrl: string; tracks: ExtensionTracklistTrack[] } | null }} payload - Lookup result
+ */
+export function sendTracklistResultToExtension(
+  ws: WebSocket | null,
+  payload: {
+    status: 'idle' | 'loading' | 'ready' | 'error';
+    error?: string;
+    result?: {
+      mixTitle: string;
+      sourceUrl: string;
+      tracks: ExtensionTracklistTrack[];
+    } | null;
+  },
+): void {
+  if (!ws) {
+    return;
+  }
+
+  try {
+    ws.send(JSON.stringify({
+      type: 'tracklist-result',
+      status: payload.status,
+      error: payload.error,
+      result: payload.result ?? null,
+      timestamp: Date.now(),
+    }));
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    sendDeskThingWarning(`⚠️ [CACP-MediaStore] Failed to send tracklist-result: ${message}`);
   }
 }
 
@@ -341,6 +388,24 @@ export async function handleExtensionWsMessage(
             `❌ [CACP-MediaStore] Command ${action} failed on extension side: ${message.error || JSON.stringify(message.detail) || 'unknown reason'}`,
           );
         }
+        break;
+      }
+
+      case 'tracklist-request': {
+        const artist = ctx.extensionData.artist?.trim();
+        const title = ctx.extensionData.title?.trim();
+
+        if (!artist || !title) {
+          mediastoreLogger.warn('Extension tracklist-request rejected — missing artist or title');
+          sendTracklistResultToExtension(ctx.getWebSocket(), {
+            status: 'error',
+            error: 'No track playing — missing artist or title.',
+          });
+          break;
+        }
+
+        mediastoreLogger.info('Extension tracklist-request', { artist, title });
+        void runTracklistLookup(artist, title, true);
         break;
       }
 

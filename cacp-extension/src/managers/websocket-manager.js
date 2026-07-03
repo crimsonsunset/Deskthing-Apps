@@ -20,13 +20,15 @@ export class BridgeManager {
    *   setEnrichedDisplay: (display: object|null) => void,
    *   getCurrentPriority: () => object|null,
    *   onFavoriteResult: (result: { status: string, error?: string }) => void,
+   *   onTracklistResult: (result: { status: string, error?: string, result?: object | null }) => void,
    * }} deps - Callbacks into the GlobalMediaManager instance.
    */
-  constructor({ sendControlCommand, setEnrichedDisplay, getCurrentPriority, onFavoriteResult }) {
+  constructor({ sendControlCommand, setEnrichedDisplay, getCurrentPriority, onFavoriteResult, onTracklistResult }) {
     this.sendControlCommand = sendControlCommand;
     this.setEnrichedDisplay = setEnrichedDisplay;
     this.getCurrentPriority = getCurrentPriority;
     this.onFavoriteResult = onFavoriteResult || (() => {});
+    this.onTracklistResult = onTracklistResult || (() => {});
 
     this.ws = null;
     this.wsConnected = false;
@@ -143,6 +145,14 @@ export class BridgeManager {
             });
             return;
           }
+          if (msg?.type === 'tracklist-result') {
+            this.onTracklistResult({
+              status: msg.status ?? 'error',
+              error: msg.error,
+              result: msg.result ?? null,
+            });
+            return;
+          }
           if (msg?.type !== 'media-command' || !msg?.action) return;
           const action = String(msg.action).toLowerCase();
           let commandResult;
@@ -206,6 +216,24 @@ export class BridgeManager {
       return true;
     } catch (err) {
       backgroundLogger.warn('Failed to send favorite-request on bridge', { error: err?.message });
+      return false;
+    }
+  }
+
+  /**
+   * Asks the CACP app server to run a forced 1001tracklists lookup for the current mix.
+   * @returns {boolean} Whether the request was sent on the bridge.
+   */
+  requestTracklistLookupFromApp() {
+    if (!this.wsConnected || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+
+    try {
+      this.ws.send(JSON.stringify({ type: 'tracklist-request', timestamp: Date.now() }));
+      return true;
+    } catch (err) {
+      backgroundLogger.warn('Failed to send tracklist-request on bridge', { error: err?.message });
       return false;
     }
   }

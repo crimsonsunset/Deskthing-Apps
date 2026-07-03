@@ -4,6 +4,12 @@
  */
 
 import logger from '@crimsonsunset/jsg-logger';
+import {
+  escapeHtml,
+  findCurrentTracklistTrack,
+  formatCueSeconds,
+  getTrackDurationSeconds,
+} from './tracklist-popup.helpers.js';
 
 // Get version dynamically from manifest
 const EXTENSION_VERSION = chrome.runtime.getManifest().version;
@@ -79,6 +85,11 @@ class CACPPopup {
     const globalFavoriteBtn = document.getElementById('globalFavorite');
     if (globalFavoriteBtn) {
       globalFavoriteBtn.addEventListener('click', () => this.sendGlobalLike());
+    }
+
+    const tracklistLookupBtn = document.getElementById('tracklistLookupBtn');
+    if (tracklistLookupBtn) {
+      tracklistLookupBtn.addEventListener('click', () => this.sendGlobalLookup());
     }
 
     // Refresh button
@@ -193,12 +204,28 @@ class CACPPopup {
     // Update global controls
     this.updateGlobalControls(currentPriority);
 
+    // Update tracklist panel
+    this.updateTracklistPanel(currentPriority);
+
+    const tracklistState = this.globalState.tracklistState ?? { status: 'idle', error: null, result: null };
+
     if (this.globalState.favoriteStatus === 'ready') {
       this.log('Track liked on SoundCloud');
       chrome.runtime.sendMessage({ type: 'reset-favorite-status' }).catch(() => {});
     } else if (this.globalState.favoriteStatus === 'error' && this.globalState.favoriteError) {
       this.log('Like failed: ' + this.globalState.favoriteError, 'error');
       chrome.runtime.sendMessage({ type: 'reset-favorite-status' }).catch(() => {});
+    }
+
+    if (tracklistState.status === 'ready' && tracklistState.result) {
+      this.log('Tracklist loaded: ' + tracklistState.result.mixTitle + ' (' + tracklistState.result.tracks.length + ' tracks)');
+      chrome.runtime.sendMessage({ type: 'reset-tracklist-lookup-status' }).catch(() => {});
+    } else if (tracklistState.status === 'ready' && !tracklistState.result) {
+      this.log('No 1001tracklists match for this mix');
+      chrome.runtime.sendMessage({ type: 'reset-tracklist-lookup-status' }).catch(() => {});
+    } else if (tracklistState.status === 'error' && tracklistState.error) {
+      this.log('Tracklist lookup failed: ' + tracklistState.error, 'error');
+      chrome.runtime.sendMessage({ type: 'reset-tracklist-lookup-status' }).catch(() => {});
     }
   }
 
@@ -229,6 +256,17 @@ class CACPPopup {
   canLikeSource(source) {
     if (!source?.isActive || !source.canControl) return false;
     return source.site === 'SoundCloud';
+  }
+
+  /**
+   * Whether the popup can request a 1001tracklists lookup for the current source.
+   * @param {object|null} source - Active media source from background.
+   * @returns {boolean}
+   */
+  canLookupSource(source) {
+    if (!source?.isActive) return false;
+    const title = source.trackInfo?.title?.trim();
+    return Boolean(title && title !== 'Unknown Track');
   }
 
   /**
@@ -444,10 +482,19 @@ class CACPPopup {
 
     const globalFavoriteBtn = document.getElementById('globalFavorite');
     const canLike = this.canLikeSource(currentPriority);
-    const isLoading = this.globalState?.favoriteStatus === 'loading';
+    const isFavoriteLoading = this.globalState?.favoriteStatus === 'loading';
     if (globalFavoriteBtn) {
-      globalFavoriteBtn.disabled = !canLike || isLoading;
-      globalFavoriteBtn.title = isLoading ? 'Liking…' : 'Like on SoundCloud';
+      globalFavoriteBtn.disabled = !canLike || isFavoriteLoading;
+      globalFavoriteBtn.title = isFavoriteLoading ? 'Liking…' : 'Like on SoundCloud';
+    }
+
+    const tracklistLookupBtn = document.getElementById('tracklistLookupBtn');
+    const canLookup = this.canLookupSource(currentPriority);
+    const tracklistStatus = this.globalState?.tracklistState?.status ?? 'idle';
+    const isLookupLoading = tracklistStatus === 'loading';
+    if (tracklistLookupBtn) {
+      tracklistLookupBtn.disabled = !canLookup || isLookupLoading;
+      tracklistLookupBtn.textContent = isLookupLoading ? 'Looking up…' : 'Lookup current mix';
     }
 
     if (hasActivePriority) {
@@ -465,6 +512,78 @@ class CACPPopup {
         }
       }
     }
+  }
+
+  /**
+   * Renders the 1001tracklists panel (status, mix title, scrollable track rows).
+   * @param {object|null} currentPriority - Active priority source from background.
+   */
+  updateTracklistPanel(currentPriority) {
+    const panelEl = document.getElementById('tracklistPanel');
+    if (!panelEl) {
+      return;
+    }
+
+    const tracklistState = this.globalState?.tracklistState ?? { status: 'idle', error: null, result: null };
+    const { status, error, result } = tracklistState;
+    const progressMs = (currentPriority?.currentTime ?? 0) * 1000;
+    const mixDurationSeconds = currentPriority?.duration ?? null;
+    const canSeek = Boolean(currentPriority?.isActive && currentPriority?.canControl);
+
+    if (status === 'loading') {
+      panelEl.innerHTML = '<p class="tracklist-status">Looking up tracklist…</p>';
+      return;
+    }
+
+    if (status === 'error' && error) {
+      panelEl.innerHTML = '<p class="tracklist-error">' + escapeHtml(error) + '</p>';
+      return;
+    }
+
+    if (status === 'ready' && !result) {
+      panelEl.innerHTML = '<p class="tracklist-status">No 1001tracklists match for this mix.</p>';
+      return;
+    }
+
+    if (!result) {
+      panelEl.innerHTML = '<p class="tracklist-status">Auto-lookup runs on long mixes. Or hit Lookup current mix.</p>';
+      return;
+    }
+
+    const currentTrack = findCurrentTracklistTrack(result.tracks, progressMs);
+    const rowsHtml = result.tracks.map((track, index) => {
+      const isActive = currentTrack?.order === track.order;
+      const durationSeconds = getTrackDurationSeconds(result.tracks, index, mixDurationSeconds);
+      const trackLabel = (track.artist ? track.artist + ' — ' : '') + track.title;
+      const canSeekRow = canSeek && track.cueSeconds != null;
+
+      return '' +
+        '<li class="' + (isActive ? 'is-active' : '') + '">' +
+        '  <button type="button" class="tracklist-row-button" data-cue-seconds="' + (track.cueSeconds ?? '') + '" ' + (canSeekRow ? '' : 'disabled') + '>' +
+        '    <span class="tracklist-cue">' + formatCueSeconds(track.cueSeconds) + '</span>' +
+        '    <span class="tracklist-track" title="' + escapeHtml(trackLabel) + '">' + escapeHtml(trackLabel) + '</span>' +
+        '    <span class="tracklist-duration">' + (durationSeconds != null ? formatCueSeconds(durationSeconds) : '') + '</span>' +
+        '  </button>' +
+        '</li>';
+    }).join('');
+
+    panelEl.innerHTML = '' +
+      '<p class="tracklist-mix-title">' + escapeHtml(result.mixTitle) + '</p>' +
+      (currentTrack
+        ? '<p class="tracklist-now">Now in mix: ' + escapeHtml(currentTrack.artist + ' — ' + currentTrack.title) + '</p>'
+        : '') +
+      '<ol class="tracklist-rows">' + rowsHtml + '</ol>';
+
+    panelEl.querySelectorAll('.tracklist-row-button[data-cue-seconds]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const cueSeconds = Number(button.getAttribute('data-cue-seconds'));
+        if (!Number.isFinite(cueSeconds)) {
+          return;
+        }
+
+        this.sendGlobalSeek(cueSeconds);
+      });
+    });
   }
 
   /**
@@ -499,6 +618,31 @@ class CACPPopup {
       setTimeout(() => this.refreshGlobalState(), 100);
     } catch (error) {
       this.log('Failed to send like: ' + error.message, 'error');
+    }
+  }
+
+  /**
+   * Request a forced 1001tracklists lookup for the current priority mix via the app server.
+   */
+  async sendGlobalLookup() {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'lookup-tracklist' });
+
+      if (response?.pending) {
+        this.log('Tracklist lookup requested…');
+        setTimeout(() => this.refreshGlobalState(), 100);
+        return;
+      }
+
+      if (response?.success) {
+        this.log('Tracklist lookup sent');
+      } else {
+        this.log('Tracklist lookup failed: ' + (response?.error || 'unknown'), 'error');
+      }
+
+      setTimeout(() => this.refreshGlobalState(), 100);
+    } catch (error) {
+      this.log('Failed to send tracklist lookup: ' + error.message, 'error');
     }
   }
 

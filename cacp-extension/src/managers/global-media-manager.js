@@ -23,6 +23,7 @@ export class GlobalMediaManager {
     this.enrichedDisplay = null; // Server-provided Format A metadata overlay
     this.favoriteStatus = 'idle';
     this.favoriteError = null;
+    this.tracklistState = { status: 'idle', error: null, result: null };
     this.updateInterval = null;
     this.onPriorityChange = onPriorityChange || (() => {});
 
@@ -87,6 +88,25 @@ export class GlobalMediaManager {
     this.favoriteStatus = status;
     this.favoriteError = error;
     this.notifyPopup('favorite-updated');
+  }
+
+  /**
+   * Stores tracklist lookup state for the popup panel.
+   * @param {{ status?: 'idle' | 'loading' | 'ready' | 'error'; error?: string | null; result?: object | null }} patch - Partial tracklist state update.
+   */
+  setTracklistState(patch) {
+    const prev = this.tracklistState ?? { status: 'idle', error: null, result: null };
+    const nextStatus = patch.status ?? prev.status;
+    const nextResult = patch.status === 'loading'
+      ? null
+      : (patch.result !== undefined ? patch.result : prev.result);
+
+    this.tracklistState = {
+      status: nextStatus,
+      error: patch.error !== undefined ? patch.error : prev.error,
+      result: nextResult,
+    };
+    this.notifyPopup('tracklist-updated');
   }
 
   /**
@@ -294,6 +314,7 @@ export class GlobalMediaManager {
       enrichedDisplay: this.enrichedDisplay,
       favoriteStatus: this.favoriteStatus,
       favoriteError: this.favoriteError,
+      tracklistState: this.tracklistState,
     };
   }
 }
