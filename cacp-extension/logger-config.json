@@ -72,7 +72,7 @@
       "component": "soundcloud",
       "emoji": "🎵"
     },
-    "src/popup.js": { 
+    "src/popup/app.component.tsx": {
       "level": "info",
       "emoji": "🎛️"
     },
