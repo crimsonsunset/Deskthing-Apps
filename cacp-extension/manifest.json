@@ -23,7 +23,7 @@
         "https://music.youtube.com/*"
       ],
       "js": [
-        "src/cacp.js"
+        "src/cacp.ts"
       ],
       "run_at": "document_start"
     }
@@ -39,7 +39,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["logger-config.json", "src/main-world-logger.js"],
+      "resources": ["logger-config.json", "src/main-world-logger.ts"],
       "matches": ["<all_urls>"]
     }
   ]
