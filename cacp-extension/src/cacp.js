@@ -5,6 +5,9 @@
 
 import logger from '@crimsonsunset/jsg-logger';
 import { installLoggerBridge } from './logger-bridge.js';
+import { SiteDetector } from './managers/site-detector.js';
+import { SiteActivationController } from './site-activation-controller.js';
+import { StateReportingController } from './state-reporting-controller.js';
 
 installLoggerBridge(logger);
 
@@ -12,57 +15,50 @@ installLoggerBridge(logger);
 window.addEventListener('error', (event) => {
     if (event.error && event.error.message && event.error.message.includes('Extension context invalidated')) {
         console.error('🚨 [CACP] Extension context invalidated - cleaning up intervals'); // Keep console for critical error
-        // Attempt cleanup of any global intervals
         if (window.cacpCleanup) {
             window.cacpCleanup();
         }
-        return true; // Prevent error from bubbling
+        return true;
     }
 });
 
-// Global cleanup function
 window.cacpCleanup = () => {
-    console.warn('🧹 [CACP] Global cleanup triggered'); // Keep console for global error handling
+    console.warn('🧹 [CACP] Global cleanup triggered');
     if (window.cacpMediaSource) {
         window.cacpMediaSource.cleanup();
     }
 };
 
-// Import site handlers
-import {SiteDetector} from './managers/site-detector.js';
-import {SoundCloudHandler} from './sites/soundcloud.js';
-import {YouTubeHandler} from './sites/youtube.js';
-
 class CACPMediaSource {
     constructor() {
         console.log('🔧 [CACP] CACPMediaSource constructor started');
-        console.log('🔧 [CACP] Logger state check:', { 
-            logger: typeof logger, 
+        console.log('🔧 [CACP] Logger state check:', {
+            logger: typeof logger,
             loggerCacp: logger ? typeof logger.cacp : 'no logger',
             loggerControls: logger ? typeof logger.controls : 'no controls',
             loggerKeys: logger ? Object.keys(logger) : 'no logger'
         });
-        
-        // Load config and apply to running singleton
+
         this.loadLoggerConfig();
 
-        // Initialize logger
         this.log = logger.getComponent('cacp');
         console.log('🔧 [CACP] Logger initialized:', typeof this.log);
 
-        // Core components
         this.siteDetector = new SiteDetector();
         this.currentHandler = null;
         this.activeSiteName = null;
 
-        // State tracking
-        this.isRegistered = false;
-        this.lastReportedState = null;
-        this.reportingInterval = null;
-        this.tabId = null;
+        this.siteActivation = new SiteActivationController(this.siteDetector, this.log);
+        this.stateReporting = new StateReportingController(
+            () => this.currentHandler,
+            () => this.activeSiteName,
+            () => this.isRegistered,
+            this.log
+        );
 
-        // Configuration
-        this.reportIntervalMs = 2000; // Report every 2 seconds
+        this.isRegistered = false;
+        this.tabId = null;
+        this.reportIntervalMs = 2000;
         this.maxRetries = 3;
 
         this.log.debug('CACP Media Source created', {
@@ -79,7 +75,7 @@ class CACPMediaSource {
         try {
             const configUrl = chrome.runtime.getURL('logger-config.json');
             const xhr = new XMLHttpRequest();
-            xhr.open('GET', configUrl, false); // synchronous — fine in extension content scripts
+            xhr.open('GET', configUrl, false);
             xhr.send();
 
             if (xhr.status === 200 && xhr.responseText) {
@@ -103,10 +99,9 @@ class CACPMediaSource {
             url: window.location.href
         });
 
-        // Test JSON context display
         this.log.info('🧪 Testing JSON context display', {
             testData: {
-                nested: {value: 42, array: [1, 2, 3]},
+                nested: { value: 42, array: [1, 2, 3] },
                 simple: 'test string',
                 boolean: true,
                 number: 123
@@ -119,7 +114,6 @@ class CACPMediaSource {
             timestamp: new Date().toISOString()
         });
 
-        // Logger is working perfectly with direct browser formatting
         try {
             const extVersion = chrome?.runtime?.getManifest?.().version || 'unknown';
             this.log.info(`✨ CACP Extension v${extVersion} - Logger Ready!`);
@@ -128,48 +122,44 @@ class CACPMediaSource {
         }
 
         try {
-            // Get tab ID from background script
             this.log.debug('Step 1: Getting tab ID...');
             await this.getTabId();
             this.log.debug('Step 1 complete: Tab ID obtained');
 
-            // Register site handlers
             this.log.debug('Step 2: Registering site handlers...');
-            await this.registerSiteHandlers();
+            await this.siteActivation.registerSiteHandlers();
             this.log.debug('Step 2 complete: Site handlers registered');
 
-            // Detect if this site is supported
             this.log.debug('Step 3: Detecting site...');
-            await this.detectSite();
+            await this.siteActivation.detectSite((siteName, handler) => {
+                this.activeSiteName = siteName;
+                this.currentHandler = handler;
+            });
             this.log.debug('Step 3 complete: Site detection finished', {
                 activeSiteName: this.activeSiteName,
                 hasHandler: !!this.currentHandler
             });
 
-            // Set up message listener for control commands
             this.log.debug('Step 4: Setting up message listener...');
             this.setupMessageListener();
             this.log.debug('Step 4 complete: Message listener setup');
 
-            // Register with background script if we have a handler
             if (this.currentHandler) {
                 this.log.debug('Step 5: Registering with background script...');
                 await this.registerWithBackground();
                 this.log.debug('Step 5 complete: Background registration successful');
 
                 this.log.debug('Step 6: Starting reporting...');
-                this.startReporting();
+                this.stateReporting.startReporting(this.reportIntervalMs);
                 this.log.debug('Step 6 complete: Reporting started');
             } else {
                 this.log.warn('No handler detected - skipping background registration and reporting');
             }
 
-            // Listen for URL changes (SPA navigation)
             this.log.debug('Step 7: Setting up URL change listener...');
             this.setupURLChangeListener();
             this.log.debug('Step 7 complete: URL change listener setup');
 
-            // Clean up on page unload
             this.log.debug('Step 8: Setting up unload handler...');
             this.setupUnloadHandler();
             this.log.debug('Step 8 complete: Unload handler setup');
@@ -197,7 +187,6 @@ class CACPMediaSource {
                 }
             });
 
-            // Additional debugging info
             this.log.debug('Initialization failure debugging info', {
                 registeredHandlers: this.siteDetector ? this.siteDetector.getRegisteredSites() : null,
                 siteDetectorExists: !!this.siteDetector,
@@ -216,170 +205,10 @@ class CACPMediaSource {
      */
     async getTabId() {
         try {
-            const response = await chrome.runtime.sendMessage({type: 'get-status'});
-            // Tab ID will be set by background script context
-            this.tabId = 'current'; // Placeholder - background script knows which tab sent the message
+            await chrome.runtime.sendMessage({ type: 'get-status' });
+            this.tabId = 'current';
         } catch (error) {
-            this.log.warn('Could not get tab ID', {error: error.message});
-        }
-    }
-
-    /**
-     * Register all available site handlers
-     */
-    async registerSiteHandlers() {
-        this.log.debug('Registering site handlers...');
-
-        // Register SoundCloud handler with high priority (10 = highest)
-        this.siteDetector.registerHandler(SoundCloudHandler, 10);
-
-        // Register YouTube handler with medium priority (20)
-        this.siteDetector.registerHandler(YouTubeHandler, 20);
-
-        const registeredCount = this.siteDetector.getRegisteredSites().length;
-        this.log.info(`Registered ${registeredCount} site handlers`);
-    }
-
-    /**
-     * Detect current site and activate appropriate handler
-     */
-    async detectSite() {
-        this.log.debug('Starting site detection', {
-            url: window.location.href,
-            hostname: window.location.hostname
-        });
-
-        try {
-            const detectedSites = this.siteDetector.detectSites(window.location.href);
-
-            this.log.debug('Site detection completed', {
-                detectedSites,
-                totalMatches: detectedSites?.length || 0,
-                url: window.location.href,
-                hostname: window.location.hostname
-            });
-
-            // Take the highest priority site (first in sorted array)
-            const detectedSite = detectedSites && detectedSites.length > 0 ? detectedSites[0] : null;
-
-            if (detectedSite) {
-                this.activeSiteName = detectedSite.name;
-
-                this.log.info('Site detected successfully', {
-                    siteName: this.activeSiteName,
-                    priority: detectedSite.priority,
-                    isActive: detectedSite.isActive
-                });
-
-                // Activate the handler
-                const activationResult = await this.activateHandler(detectedSite.name);
-
-                this.log.debug('Handler activation completed', {
-                    siteName: this.activeSiteName,
-                    success: activationResult
-                });
-
-            } else {
-                this.log.debug('No supported site detected', {
-                    url: window.location.href,
-                    hostname: window.location.hostname,
-                    availableHandlers: this.siteDetector.getRegisteredSites()
-                });
-            }
-        } catch (error) {
-            this.log.error('Site detection failed', {
-                error: error.message,
-                stack: error.stack,
-                url: window.location.href,
-                hostname: window.location.hostname
-            });
-            throw error;
-        }
-    }
-
-    /**
-     * Activate site handler
-     */
-    async activateHandler(siteName) {
-        try {
-            this.log.debug('Starting handler activation', {
-                siteName,
-                hasSiteDetector: !!this.siteDetector,
-                siteHandlers: this.siteDetector ? Object.keys(this.siteDetector.siteHandlers || {}) : 'no site detector'
-            });
-
-            if (!this.siteDetector) {
-                this.log.error('Handler activation failed', {
-                    siteName,
-                    reason: 'No site detector available'
-                });
-                return false;
-            }
-
-            if (!siteName) {
-                this.log.error('Handler activation failed', {
-                    reason: 'No site name provided'
-                });
-                return false;
-            }
-
-            try {
-                this.log.info('Attempting to activate handler', {
-                    siteName,
-                    availableHandlers: Object.keys(this.siteDetector.siteHandlers || {})
-                });
-
-                this.currentHandler = this.siteDetector.createHandlerInstance(siteName);
-
-                if (this.currentHandler) {
-                    this.log.info('Handler created successfully', {
-                        siteName,
-                        handlerType: this.currentHandler.constructor.name,
-                        hasInitialize: typeof this.currentHandler.initialize === 'function'
-                    });
-
-                    const initialized = await this.currentHandler.initialize();
-
-                    if (initialized) {
-                        this.log.info('Handler activated successfully', {
-                            siteName,
-                            handlerReady: true
-                        });
-                        return true;
-                    } else {
-                        this.log.error('Handler initialization failed', {
-                            siteName,
-                            initialized,
-                            initializeResult: initialized
-                        });
-                        this.currentHandler = null;
-                        return false;
-                    }
-                } else {
-                    this.log.error('Handler creation failed', {
-                        siteName,
-                        availableHandlers: Object.keys(this.siteDetector.siteHandlers || {}),
-                        reason: 'createHandlerInstance returned null/undefined'
-                    });
-                    return false;
-                }
-            } catch (error) {
-                this.log.error('Handler activation error', {
-                    siteName,
-                    error: error.message,
-                    stack: error.stack,
-                    errorType: error.constructor.name
-                });
-                this.currentHandler = null;
-                return false;
-            }
-        } catch (error) {
-            this.log.error('Handler activation failed', {
-                siteName,
-                error: error.message,
-                stack: error.stack
-            });
-            return false;
+            this.log.warn('Could not get tab ID', { error: error.message });
         }
     }
 
@@ -389,7 +218,7 @@ class CACPMediaSource {
     async registerWithBackground() {
         try {
             this.log.debug('Getting current media state for registration...');
-            const mediaState = this.getCurrentMediaState();
+            const mediaState = this.stateReporting.getCurrentMediaState();
 
             this.log.debug('Media state for registration', {
                 site: this.activeSiteName,
@@ -442,134 +271,6 @@ class CACPMediaSource {
     }
 
     /**
-     * Get current media state from handler
-     */
-    getCurrentMediaState() {
-        if (!this.currentHandler) {
-            return {
-                isActive: false,
-                trackInfo: null,
-                isPlaying: false,
-                currentTime: 0,
-                duration: 0
-            };
-        }
-
-        try {
-            const trackInfo = this.currentHandler.getTrackInfo ? this.currentHandler.getTrackInfo() : null;
-            const isPlaying = this.currentHandler.isPlaying ? this.currentHandler.isPlaying() : (this.currentHandler.getPlayingState ? this.currentHandler.getPlayingState() : false);
-            const currentTime = this.currentHandler.getCurrentTime ? this.currentHandler.getCurrentTime() : 0;
-            const duration = this.currentHandler.getDuration ? this.currentHandler.getDuration() : 0;
-            // Active when track metadata is present — enables controls even when paused
-            const hasTrackData = !!(trackInfo?.title && trackInfo.title !== 'Unknown Track' && trackInfo.title !== 'Unknown Title');
-            const isActive = hasTrackData || isPlaying;
-
-            return {
-                isActive,
-                trackInfo,
-                isPlaying,
-                currentTime,
-                duration,
-                site: this.activeSiteName
-            };
-        } catch (error) {
-            this.log.warn('Error getting media state', {error: error.message});
-            return {
-                isActive: false,
-                trackInfo: null,
-                isPlaying: false,
-                currentTime: 0,
-                duration: 0
-            };
-        }
-    }
-
-    /**
-     * Start periodic reporting to background script
-     */
-    startReporting() {
-        if (this.reportingInterval) {
-            clearInterval(this.reportingInterval);
-        }
-
-        this.reportingInterval = setInterval(() => {
-            this.reportMediaState();
-        }, this.reportIntervalMs);
-
-        this.log.debug('Started media state reporting', {
-            intervalMs: this.reportIntervalMs
-        });
-    }
-
-    /**
-     * Report current media state to background script
-     * @param {{ force?: boolean }} [options] - When force is true, skip hasStateChanged gating (e.g. after seek)
-     */
-    async reportMediaState(options = {}) {
-        const { force = false } = options;
-        if (!this.isRegistered) {
-            this.log.debug('reportMediaState: skipping — not registered');
-            return;
-        }
-
-        if (!this.currentHandler) {
-            this.log.debug('reportMediaState: skipping — no active handler');
-            return;
-        }
-
-        try {
-            const currentState = this.getCurrentMediaState();
-
-            if (!force && !this.hasStateChanged(currentState)) {
-                this.log.trace('reportMediaState: skipping — state unchanged', {
-                    site: this.activeSiteName,
-                    isPlaying: currentState.isPlaying,
-                    currentTime: currentState.currentTime
-                });
-                return;
-            }
-
-            await chrome.runtime.sendMessage({
-                type: 'update-media-source',
-                data: currentState
-            });
-
-            this.lastReportedState = {...currentState};
-
-            this.log.trace('Media state reported', {
-                site: this.activeSiteName,
-                isPlaying: currentState.isPlaying,
-                trackTitle: currentState.trackInfo?.title,
-                currentTime: currentState.currentTime
-            });
-        } catch (error) {
-            this.log.warn('Failed to report media state', {
-                error: error.message,
-                isRegistered: this.isRegistered,
-                hasChromeRuntimeError: !!chrome.runtime.lastError
-            });
-        }
-    }
-
-    /**
-     * Check if media state has changed significantly
-     */
-    hasStateChanged(newState) {
-        if (!this.lastReportedState) return true;
-
-        const prev = this.lastReportedState;
-
-        // Check significant changes
-        return (
-            prev.isActive !== newState.isActive ||
-            prev.isPlaying !== newState.isPlaying ||
-            prev.trackInfo?.title !== newState.trackInfo?.title ||
-            prev.trackInfo?.artist !== newState.trackInfo?.artist ||
-            Math.abs(prev.currentTime - newState.currentTime) > 1 // tighter threshold for timeline UI
-        );
-    }
-
-    /**
      * Handle control commands from background script
      */
     setupMessageListener() {
@@ -581,7 +282,7 @@ class CACPMediaSource {
                         success: false,
                         error: error.message
                     }));
-                return true; // Async response
+                return true;
             }
 
             if (message.type === 'sw-restarted') {
@@ -591,7 +292,7 @@ class CACPMediaSource {
                         wasRegistered: this.isRegistered
                     });
                     this.isRegistered = false;
-                    this.lastReportedState = null;
+                    this.stateReporting.lastReportedState = null;
                     this.registerWithBackground().catch((err) => {
                         this.log.error('Re-registration after SW restart failed', { error: err.message });
                     });
@@ -604,13 +305,16 @@ class CACPMediaSource {
 
     /**
      * Handle media control commands
+     * @param {string} command - Control command name
+     * @param {number} [time] - Seek target time in seconds
+     * @returns {Promise<object>}
      */
     async handleControlCommand(command, time) {
         if (!this.currentHandler) {
-            return {success: false, error: 'No active handler'};
+            return { success: false, error: 'No active handler' };
         }
 
-        this.log.info('Handling control command', {command, time, site: this.activeSiteName});
+        this.log.info('Handling control command', { command, time, site: this.activeSiteName });
 
         try {
             let result = false;
@@ -664,10 +368,11 @@ class CACPMediaSource {
                         return { success: false, error: 'Seek time missing or unsupported' };
                     }
                     break;
-                case 'toggle':
+                case 'toggle': {
                     const isPlaying = this.currentHandler.isPlaying ? this.currentHandler.isPlaying() : false;
                     result = isPlaying ? await this.currentHandler.pause() : await this.currentHandler.play();
                     break;
+                }
                 case 'favorite':
                     if (this.currentHandler.favorite) {
                         result = await this.currentHandler.favorite();
@@ -676,16 +381,15 @@ class CACPMediaSource {
                     }
                     break;
                 default:
-                    return {success: false, error: `Unknown command: ${command}`};
+                    return { success: false, error: `Unknown command: ${command}` };
             }
 
-            // Force position reports after seek — streaming seeks may not land within 100ms
             if (command === 'seek') {
-                setTimeout(() => this.reportMediaState({ force: true }), 100);
-                setTimeout(() => this.reportMediaState({ force: true }), 500);
-                setTimeout(() => this.reportMediaState({ force: true }), 1200);
+                setTimeout(() => this.stateReporting.reportMediaState({ force: true }), 100);
+                setTimeout(() => this.stateReporting.reportMediaState({ force: true }), 500);
+                setTimeout(() => this.stateReporting.reportMediaState({ force: true }), 1200);
             } else {
-                setTimeout(() => this.reportMediaState({ force: true }), 100);
+                setTimeout(() => this.stateReporting.reportMediaState({ force: true }), 100);
             }
 
             const success = result && typeof result === 'object' && 'success' in result
@@ -696,8 +400,6 @@ class CACPMediaSource {
                 success,
                 action: command,
                 site: this.activeSiteName,
-                // Forward the raw handler result (e.g. soundcloud.js's seek `method`/`time`)
-                // so background.js can relay it to the server for server-side-only debugging.
                 detail: result && typeof result === 'object' ? result : undefined
             };
 
@@ -706,7 +408,7 @@ class CACPMediaSource {
                 command,
                 error: error.message
             });
-            return {success: false, error: error.message};
+            return { success: false, error: error.message };
         }
     }
 
@@ -716,20 +418,20 @@ class CACPMediaSource {
     setupURLChangeListener() {
         let lastUrl = window.location.href;
 
-        // Monitor for URL changes
         const urlCheckInterval = setInterval(() => {
             if (window.location.href !== lastUrl) {
                 lastUrl = window.location.href;
-                this.log.debug('URL changed, re-detecting site', {newUrl: lastUrl});
+                this.log.debug('URL changed, re-detecting site', { newUrl: lastUrl });
 
-                // Re-detect site after URL change
                 setTimeout(() => {
-                    this.detectSite();
+                    this.siteActivation.detectSite((siteName, handler) => {
+                        this.activeSiteName = siteName;
+                        this.currentHandler = handler;
+                    });
                 }, 1000);
             }
         }, 1000);
 
-        // Clean up on unload
         window.addEventListener('beforeunload', () => {
             clearInterval(urlCheckInterval);
         });
@@ -750,12 +452,11 @@ class CACPMediaSource {
     cleanup() {
         this.log.debug('🧹 [CACP] Cleaning up media source');
 
-        if (this.reportingInterval) {
-            clearInterval(this.reportingInterval);
-            this.reportingInterval = null;
+        if (this.stateReporting.reportingInterval) {
+            clearInterval(this.stateReporting.reportingInterval);
+            this.stateReporting.reportingInterval = null;
         }
 
-        // Clean up current handler
         if (this.currentHandler && typeof this.currentHandler.cleanup === 'function') {
             this.currentHandler.cleanup();
         }
@@ -768,7 +469,6 @@ class CACPMediaSource {
                     // Background script might be unavailable during cleanup
                 });
             } catch (error) {
-                // Extension context might be invalidated
                 this.log.debug('Chrome runtime unavailable during cleanup');
             }
         }
@@ -776,13 +476,14 @@ class CACPMediaSource {
 
     /**
      * Get current CACP status for debugging/testing
+     * @returns {object}
      */
     getStatus() {
         return {
             isInitialized: this.currentHandler !== null,
             activeSiteName: this.activeSiteName,
             hasActiveHandler: this.currentHandler !== null,
-            lastMediaData: this.lastReportedState?.trackInfo || null,
+            lastMediaData: this.stateReporting.lastReportedState?.trackInfo || null,
             siteDetector: this.siteDetector?.getStatus() || null,
             websocketManager: {
                 isConnected: this.isRegistered
@@ -792,36 +493,28 @@ class CACPMediaSource {
     }
 }
 
-// Initialize CACP Media Source when script loads
 const cacpMediaSource = new CACPMediaSource();
 
-// Register globally for cleanup
 window.cacpMediaSource = cacpMediaSource;
 
-// Clean up on page unload
 window.addEventListener('beforeunload', () => {
     cacpMediaSource.cleanup();
 });
 
-// Clean up when content script is about to be unloaded
 window.addEventListener('pagehide', () => {
     cacpMediaSource.cleanup();
 });
 
-// Wait for DOM to be ready, then initialize
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         cacpMediaSource.initialize();
     });
 } else {
-    // DOM already loaded
     cacpMediaSource.initialize();
 }
 
-// Export for potential external access
 window.cacpMediaSource = cacpMediaSource;
 
-// Expose CACP object for testing
 window.CACP = {
     getStatus: () => cacpMediaSource.getStatus(),
     currentHandler: cacpMediaSource.currentHandler,
@@ -829,14 +522,13 @@ window.CACP = {
     isInitialized: () => cacpMediaSource.currentHandler !== null
 };
 
-// Log that the content script loaded with version info
 if (cacpMediaSource.log) {
     try {
-        const extVersion = chrome?.runtime?.getManifest?.().version || 'unknown';
+        const extVersion = chrome?.runtime?.getManifest?.()?.version || 'unknown';
         cacpMediaSource.log.info(`CACP Extension v${extVersion} content script loaded`);
     } catch {
         cacpMediaSource.log.info('CACP Extension content script loaded');
     }
 } else {
-    console.info('[CACP] Media Source content script loaded'); // Fallback if logger not ready
+    console.info('[CACP] Media Source content script loaded');
 }
