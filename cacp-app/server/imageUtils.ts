@@ -1,4 +1,5 @@
 import { sendDeskThingError, sendDeskThingWarning } from './deskthing-log.helpers.js';
+import { mediastoreLogger } from './logger.helpers.js';
 import { existsSync, mkdirSync, writeFile, readdirSync, unlinkSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -43,7 +44,7 @@ async function withCacheLock<T>(lockKey: string, fn: () => Promise<T>): Promise<
 function ensureImagesDirs() {
   for (const dir of IMAGES_DIRS) {
     if (!existsSync(dir)) {
-      console.log(`Creating images directory for CACP: ${dir}`);
+      mediastoreLogger.debug('Creating images directory for CACP', { dir });
       mkdirSync(dir, { recursive: true });
     }
   }

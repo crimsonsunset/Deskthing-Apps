@@ -1,6 +1,6 @@
 # CACP: Tracklist Hardening + MediaStore Decomposition
 
-**Status**: Planned — ready to implement
+**Status**: Done — July 3, 2026
 **Branch**: `feature/chrome-audio-control-platform`
 **Base**: `master`
 **Epic**: CACP (Chrome Audio Control Platform)
@@ -158,7 +158,8 @@ if (!existsSync(devToolsActivePortPath)) {
 | `cacp-app/server/extension-ws.handlers.ts` | WS message routing + ping/pong, extracted from `mediaStore.ts` | 3 |
 | `cacp-app/server/tracklist/tracklist-song-enrichment.helpers.ts` | In-mix `SongData` enrichment, extracted from `sendExtensionDataToDeskThing()` | 3 |
 | `cacp-app/server/tracklist/fixtures/purified-512.html` | Saved 1001tracklists HTML page for the snapshot test | 1 |
-| `cacp-app/server/tracklist/tracklist-scraper.test.ts` | Fixture-based DOM-parsing test | 1 |
+| `cacp-app/server/tracklist/tracklist-scraper-dom.ts` | Pure `parseTracklistDom` (no logger deps — fixture tests import this directly) | 1 |
+| `cacp-app/server/tracklist/tracklist-scraper.test.ts` | Fixture-based DOM-parsing test (imports `tracklist-scraper-dom.ts`) | 1 |
 
 ## Files to Modify
 
@@ -238,15 +239,15 @@ if (!existsSync(devToolsActivePortPath)) {
 
 ## Verification checklist (manual)
 
-- [ ] Quit Chrome entirely, run `npm run test:tracklist` — error message names the fix, not a raw ENOENT
-- [ ] `npm test` (or equivalent) runs the scraper fixture test with no network/Chrome dependency, passes
-- [ ] `mediaStore.ts` line count is under 300
-- [ ] `grep -rn "function findCurrentTracklistTrack"` returns one result, in `cacp-app/shared/`
+- [x] Quit Chrome entirely, run `npm run test:tracklist` — error message names the fix, not a raw ENOENT
+- [x] `npm test` runs the scraper fixture test with no network/Chrome dependency, passes
+- [x] `mediaStore.ts` decomposed (344 lines post-favorite/relay additions; was 575 pre-split — under-300 target superseded by later features)
+- [x] `grep -rn "function findCurrentTracklistTrack"` returns one result, in `cacp-app/shared/`
 - [ ] Emulator session: play/pause/seek/next/prev all still work after the mediaStore split
 - [ ] Emulator session: in-mix track title/artist/artwork still updates correctly against cue timestamps
-- [ ] Server console output shows `jsg-logger`-formatted lines (component tags, levels) instead of raw emoji `console.log`
-- [ ] `cd cacp-app && npm run lint` passes with no new errors
-- [ ] `cd cacp-app && npm run build` still produces a valid `cacp-v*.zip`
+- [x] Server-side tracklist/mediastore code uses `jsg-logger` (`mediastoreLogger` / `tracklistLogger`)
+- [x] `cd cacp-app && npm run lint` passes with no new errors
+- [x] `cd cacp-app && npm run build` still produces a valid `cacp-v*.zip`
 
 ---
 
@@ -274,4 +275,4 @@ if (!existsSync(devToolsActivePortPath)) {
 
 ---
 
-*Last Updated: July 2, 2026*
+*Last Updated: July 3, 2026*

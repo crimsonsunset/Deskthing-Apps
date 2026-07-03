@@ -2,7 +2,7 @@
 
 **Chrome Audio Control Platform — Technical Design**
 
-*Last Updated: July 2, 2026*
+*Last Updated: July 3, 2026*
 
 ---
 
@@ -86,6 +86,7 @@ cacp-app/
         ├── tracklist-current-track.helpers.ts       # Server-side track resolution (imports @shared)
         ├── tracklist-lookup.ts
         ├── tracklist-scraper.ts
+        ├── tracklist-scraper-dom.ts   # Pure parseTracklistDom (fixture tests, no logger deps)
         ├── tracklist-matcher.ts
         ├── tracklist.handlers.ts
         ├── chrome-cdp.util.ts

@@ -8,86 +8,21 @@ import {
   type SearchCandidate,
   type TracklistResult,
 } from './tracklist.types.js';
+import {
+  LOOSE_TRACKLIST_LINK_SELECTOR,
+  MAX_SEARCH_CANDIDATES,
+  PAGE_LOAD_TIMEOUT_MS,
+  SEARCH_BASE_URL,
+  SEARCH_INPUT_SELECTOR,
+  SEARCH_RESULTS_TIMEOUT_MS,
+  TRACKLIST_1001TL_DOM_SELECTORS,
+  TRACKLIST_LINK_SELECTOR,
+  TRACK_ROW_WAIT_SELECTOR,
+  type Tracklist1001tlDomSelectors,
+} from './tracklist-1001tl.constants.js';
+import { parseTracklistDom, type ParsedTracklistDom } from './tracklist-scraper-dom.js';
 
-const SEARCH_BASE_URL = 'https://www.1001tracklists.com/';
-const MAX_SEARCH_CANDIDATES = 10;
-const SEARCH_INPUT_SELECTOR = '#sBoxInput';
-const TRACKLIST_LINK_SELECTOR = 'a[href*="/tracklist/"]';
-const TRACK_ROW_SELECTOR = 'div.tlpItem[id^="tlp_"]';
-const SEARCH_RESULTS_TIMEOUT_MS = 15_000;
-const PAGE_LOAD_TIMEOUT_MS = 30_000;
-
-type ParsedTracklistDom = {
-  mixTitle: string;
-  tracks: {
-    order: number;
-    cueSeconds: number | null;
-    artist: string;
-    title: string;
-    artworkUrl?: string;
-    rowId: string;
-  }[];
-};
-
-/**
- * Parses a 1001tracklists tracklist page DOM into mix title and timestamped track rows.
- * Pure function for fixture tests (linkedom) and browser evaluate (via toString).
- * @param {Document} document - Tracklist page document.
- * @returns {ParsedTracklistDom} Mix title and parsed track rows.
- */
-export function parseTracklistDom(document: Document): ParsedTracklistDom {
-  const mixTitle =
-    document.querySelector('#pageTitle h1')?.textContent?.replace(/\s+/g, ' ').trim() ??
-    document.querySelector('h1')?.textContent?.replace(/\s+/g, ' ').trim() ??
-    document.title.replace(/\s*\|\s*1001Tracklists.*$/i, '').trim();
-
-  // ponytail: inlined for page.evaluate — outer module constants are not in eval scope
-  const placeholderArt = /default_100\.png|empty\.png|\/artworks\/default/i;
-
-  const rows = Array.from(
-    document.querySelectorAll('div.tlpItem[id^="tlp_"], div[id^="tlp_"]'),
-  ).filter(
-    (row) =>
-      row.querySelector('meta[itemprop="name"]') ?? row.querySelector('meta[itemprop="byArtist"]'),
-  );
-
-  const tracks = rows.map((row, index) => {
-    const artist =
-      row.querySelector('meta[itemprop="byArtist"]')?.getAttribute('content')?.trim() ?? '';
-    const fullName =
-      row.querySelector('meta[itemprop="name"]')?.getAttribute('content')?.trim() ?? '';
-    const title =
-      artist && fullName.startsWith(`${artist} - `)
-        ? fullName.slice(artist.length + 3).trim()
-        : fullName;
-
-    const cueInput =
-      row.querySelector<HTMLInputElement>('input[id$="_cue_seconds"]') ??
-      document.querySelector<HTMLInputElement>(
-        `#${row.id.replace(/^tlp_/, 'tlp')}_cue_seconds`,
-      );
-    const cueRaw = cueInput?.value?.trim();
-    const parsedCue = cueRaw !== undefined && cueRaw !== '' ? Number.parseInt(cueRaw, 10) : null;
-
-    const artImg = row.querySelector('img.artwork.artM');
-    const artRaw = artImg?.getAttribute('src') || artImg?.getAttribute('data-src') || '';
-    const isPlaceholderArt = !artRaw || placeholderArt.test(artRaw);
-
-    const trnoRaw = row.getAttribute('data-trno');
-    const orderFromDom = trnoRaw !== null ? Number.parseInt(trnoRaw, 10) + 1 : null;
-
-    return {
-      order: orderFromDom !== null && !Number.isNaN(orderFromDom) ? orderFromDom : index + 1,
-      cueSeconds: parsedCue !== null && Number.isNaN(parsedCue) ? null : parsedCue,
-      artist,
-      title,
-      artworkUrl: isPlaceholderArt ? undefined : artRaw,
-      rowId: row.id,
-    };
-  });
-
-  return { mixTitle, tracks };
-}
+export { parseTracklistDom } from './tracklist-scraper-dom.js';
 
 /**
  * Logs page URL/title diagnostics plus loose anchor counts when a wait times out,
@@ -102,7 +37,7 @@ async function logFailureDiagnostics(
   const url = page.url();
   const title = await page.title().catch(() => '(failed to read title)');
   const looseTracklistAnchorCount = await page
-    .$$eval('a[href*="tracklist"]', (anchors) => anchors.length)
+    .$$eval(LOOSE_TRACKLIST_LINK_SELECTOR, (anchors) => anchors.length)
     .catch(() => -1);
   const totalAnchorCount = await page
     .$$eval('a', (anchors) => anchors.length)
@@ -339,16 +274,16 @@ export async function scrapeTracklist(
     });
 
     tracklistLogger.debug('Waiting for track row selector', {
-      selector: TRACK_ROW_SELECTOR,
+      selector: TRACK_ROW_WAIT_SELECTOR,
       timeoutMs: SEARCH_RESULTS_TIMEOUT_MS,
     });
     try {
-      await page.waitForSelector(TRACK_ROW_SELECTOR, {
+      await page.waitForSelector(TRACK_ROW_WAIT_SELECTOR, {
         timeout: SEARCH_RESULTS_TIMEOUT_MS,
       });
     } catch (waitErr: unknown) {
       tracklistLogger.warn('Track row selector timeout', {
-        selector: TRACK_ROW_SELECTOR,
+        selector: TRACK_ROW_WAIT_SELECTOR,
         url: page.url(),
         ...errorFields(waitErr),
       });
@@ -363,10 +298,17 @@ export async function scrapeTracklist(
     // browser context — no user/network input reaches eval. This lets the parser
     // stay a single pure function usable both in Node (linkedom tests) and here in
     // page.evaluate, without duplicating the DOM-parsing logic.
-    const scraped = await page.evaluate((parserSource: string) => {
-      const parseTracklistDom = eval(`(${parserSource})`) as (document: Document) => ParsedTracklistDom;
-      return parseTracklistDom(document);
-    }, parseTracklistDom.toString());
+    const scraped = await page.evaluate(
+      (parserSource: string, selectors: Tracklist1001tlDomSelectors) => {
+        const parseTracklistDom = eval(`(${parserSource})`) as (
+          document: Document,
+          selectors: Tracklist1001tlDomSelectors,
+        ) => ParsedTracklistDom;
+        return parseTracklistDom(document, selectors);
+      },
+      parseTracklistDom.toString(),
+      TRACKLIST_1001TL_DOM_SELECTORS,
+    );
 
     tracklistLogger.info('scrapeTracklist parsed DOM', {
       url,

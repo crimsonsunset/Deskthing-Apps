@@ -269,15 +269,19 @@ export class CACPMediaStore {
   }
 
   /** Re-sends current song state to DeskThing. */
-  public handleGetSong() {
-    mediastoreLogger.info('GET song request - sending current data');
+  private refreshDeskThingSong(logLabel: string) {
+    mediastoreLogger.info(logLabel);
     this.sendExtensionDataToDeskThing();
   }
 
   /** Re-sends current song state to DeskThing. */
+  public handleGetSong() {
+    this.refreshDeskThingSong('GET song request - sending current data');
+  }
+
+  /** Re-sends current song state to DeskThing. */
   public handleRefresh() {
-    mediastoreLogger.info('REFRESH request - sending current data');
-    this.sendExtensionDataToDeskThing();
+    this.refreshDeskThingSong('REFRESH request - sending current data');
   }
 
   /** Re-sends song state after tracklist lookup completes (clears dedupe cache). */
@@ -296,23 +300,7 @@ export class CACPMediaStore {
    * @param {TracklistClientPayload} payload - Current lookup status and result.
    */
   public relayTracklistToExtension(payload: TracklistClientPayload): void {
-    sendTracklistResultToExtension(this.extensionWebSocket, {
-      status: payload.status,
-      error: payload.error,
-      result: payload.result
-        ? {
-            mixTitle: payload.result.mixTitle,
-            sourceUrl: payload.result.sourceUrl,
-            tracks: payload.result.tracks.map((track) => ({
-              order: track.order,
-              cueSeconds: track.cueSeconds,
-              artist: track.artist,
-              title: track.title,
-              rowId: track.rowId,
-            })),
-          }
-        : null,
-    });
+    sendTracklistResultToExtension(this.extensionWebSocket, payload);
   }
 
   /** Clears connection and cached extension state. */

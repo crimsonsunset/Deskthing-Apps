@@ -4,14 +4,17 @@ import { connectToChrome } from './chrome-cdp.util.js';
 import { dumpDebugSnapshot } from './tracklist-debug.util.js';
 import { errorFields, timingMs, timingStart } from './tracklist-log.helpers.js';
 import {
+  PAGE_LOAD_TIMEOUT_MS,
+  SC_WIDGET_IFRAME_SELECTOR,
+  WIDGET_IFRAME_TIMEOUT_MS,
+  parseTrackIdFromWidgetSrc,
+  soundCloudRowIconSelector,
+} from './tracklist-1001tl.constants.js';
+import {
   findOrOpenSoundCloudTab,
   getAuthenticatedUserId,
   likeTrackViaSession,
 } from './soundcloud-session-api.util.js';
-
-const PAGE_LOAD_TIMEOUT_MS = 30_000;
-const WIDGET_IFRAME_TIMEOUT_MS = 25_000;
-const SC_IFRAME_SELECTOR = 'iframe[src*="w.soundcloud.com"]';
 
 export type FavoriteMixTrackResult = {
   success: boolean;
@@ -26,31 +29,12 @@ type WidgetIframeInfo = {
 };
 
 /**
- * Builds the row-scoped SoundCloud icon selector for a 1001tracklists track row.
- * @param {string} rowId - DOM id of the track row (e.g. "tlp_14101120").
- * @returns {string} CSS selector for the row's SoundCloud action icon.
- */
-function soundCloudIconSelector(rowId: string): string {
-  return `#${rowId} i.mAction.fa-soundcloud`;
-}
-
-/**
- * Parses the numeric SoundCloud track id from a widget iframe src URL.
- * @param {string} src - iframe src attribute.
- * @returns {string | null} Track id when matched.
- */
-function parseTrackIdFromWidgetSrc(src: string): string | null {
-  const match = src.match(/tracks%2F(\d+)|tracks\/(\d+)/);
-  return match?.[1] ?? match?.[2] ?? null;
-}
-
-/**
  * Collects diagnostic info for all SoundCloud widget iframes on the mix page.
  * @param {Page} page - Puppeteer page on 1001tracklists.
  * @returns {Promise<WidgetIframeInfo[]>}
  */
 async function collectWidgetIframeInfo(page: Page): Promise<WidgetIframeInfo[]> {
-  return page.$$eval(SC_IFRAME_SELECTOR, (iframes) =>
+  return page.$$eval(SC_WIDGET_IFRAME_SELECTOR, (iframes) =>
     iframes.map((el, index) => {
       const iframe = el as HTMLIFrameElement;
       const rect = iframe.getBoundingClientRect();
@@ -107,7 +91,7 @@ async function logFailureDiagnostics(
     .then((el) => el !== null)
     .catch(() => false);
   const hasScIcon = await page
-    .$(soundCloudIconSelector(rowId))
+    .$(soundCloudRowIconSelector(rowId))
     .then((el) => el !== null)
     .catch(() => false);
   const iframeInfos = await collectWidgetIframeInfo(page).catch(() => [] as WidgetIframeInfo[]);
@@ -161,7 +145,7 @@ async function waitForNewWidgetIframe(
         return rect.height > 0 && Boolean(newest.src);
       },
       { timeout: WIDGET_IFRAME_TIMEOUT_MS },
-      SC_IFRAME_SELECTOR,
+      SC_WIDGET_IFRAME_SELECTOR,
       iframeCountBefore,
     );
   } catch (err: unknown) {
@@ -177,7 +161,7 @@ async function waitForNewWidgetIframe(
 
   await log1001tlWidgetState(page, rowId, 'widget iframe appeared', startedMs);
 
-  const frameHandles = await page.$$(SC_IFRAME_SELECTOR);
+  const frameHandles = await page.$$(SC_WIDGET_IFRAME_SELECTOR);
   return frameHandles[frameHandles.length - 1] ?? null;
 }
 
@@ -220,7 +204,7 @@ export async function favoriteMixTrack(
       document.getElementById(id)?.scrollIntoView({ block: 'center', behavior: 'instant' });
     }, rowId);
 
-    const scIconSelector = soundCloudIconSelector(rowId);
+    const scIconSelector = soundCloudRowIconSelector(rowId);
     tracklistLogger.info('1001TL mix-favorite: locating row SoundCloud icon', {
       rowId,
       selector: scIconSelector,

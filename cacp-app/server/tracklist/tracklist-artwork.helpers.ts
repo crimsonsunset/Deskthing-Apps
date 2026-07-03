@@ -1,8 +1,7 @@
 import { isLocalDeskThingImageAvailable, saveRemoteImage } from '../imageUtils.js';
 import { tracklistLogger } from '../logger.helpers.js';
+import { PLACEHOLDER_ART_PATTERN } from './tracklist-1001tl.constants.js';
 import type { TracklistTrack } from './tracklist.types.js';
-
-const PLACEHOLDER_ART_PATTERN = /default_100\.png|empty\.png|\/artworks\/default/i;
 
 /**
  * Returns true when a 1001tracklists row image URL is a placeholder, not real track art.

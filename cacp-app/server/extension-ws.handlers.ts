@@ -4,7 +4,7 @@ import { mediastoreLogger } from './logger.helpers.js';
 import { favoriteMixTrack } from './tracklist/tracklist-favorite.js';
 import { resolveMixFavoriteTarget } from './tracklist/tracklist-favorite-target.helpers.js';
 import { errorFields } from './tracklist/tracklist-log.helpers.js';
-import { runTracklistLookup } from './tracklist/tracklist.handlers.js';
+import { runTracklistLookup, type TracklistClientPayload } from './tracklist/tracklist.handlers.js';
 
 /**
  * How long after a seek to keep suppressing extension position reports that
@@ -161,19 +161,11 @@ export type ExtensionTracklistTrack = {
 /**
  * Pushes tracklist lookup status to the extension popup via the WS bridge.
  * @param {WebSocket | null} ws - Active extension socket, if any
- * @param {{ status: 'idle' | 'loading' | 'ready' | 'error'; error?: string; result?: { mixTitle: string; sourceUrl: string; tracks: ExtensionTracklistTrack[] } | null }} payload - Lookup result
+ * @param {TracklistClientPayload} payload - Lookup result from tracklist.handlers
  */
 export function sendTracklistResultToExtension(
   ws: WebSocket | null,
-  payload: {
-    status: 'idle' | 'loading' | 'ready' | 'error';
-    error?: string;
-    result?: {
-      mixTitle: string;
-      sourceUrl: string;
-      tracks: ExtensionTracklistTrack[];
-    } | null;
-  },
+  payload: TracklistClientPayload,
 ): void {
   if (!ws) {
     return;
@@ -184,7 +176,19 @@ export function sendTracklistResultToExtension(
       type: 'tracklist-result',
       status: payload.status,
       error: payload.error,
-      result: payload.result ?? null,
+      result: payload.result
+        ? {
+            mixTitle: payload.result.mixTitle,
+            sourceUrl: payload.result.sourceUrl,
+            tracks: payload.result.tracks.map((track) => ({
+              order: track.order,
+              cueSeconds: track.cueSeconds,
+              artist: track.artist,
+              title: track.title,
+              rowId: track.rowId,
+            })),
+          }
+        : null,
       timestamp: Date.now(),
     }));
   } catch (error: unknown) {
@@ -400,6 +404,7 @@ export async function handleExtensionWsMessage(
           sendTracklistResultToExtension(ctx.getWebSocket(), {
             status: 'error',
             error: 'No track playing — missing artist or title.',
+            result: null,
           });
           break;
         }

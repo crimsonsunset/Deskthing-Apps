@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { parseHTML } from 'linkedom';
-import { parseTracklistDom } from './tracklist-scraper.js';
+import { parseTracklistDom } from './tracklist-scraper-dom.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURE_PATH = join(__dirname, 'fixtures/purified-512.html');

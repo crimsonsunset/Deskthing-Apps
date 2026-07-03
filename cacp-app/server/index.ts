@@ -1,6 +1,6 @@
 import { DeskThing } from "@deskthing/server";
 import { DESKTHING_EVENTS } from "@deskthing/types";
-import { WebSocketServer, WebSocket } from 'ws';
+import { WebSocketServer } from 'ws';
 import { CACPMediaStore } from "./mediaStore";
 import { deleteImages } from "./imageUtils";
 import { initializeListeners } from "./initializer";
@@ -28,7 +28,7 @@ try {
   const packagePath = join(__dirname, '../package.json');
   const packageJson = JSON.parse(readFileSync(packagePath, 'utf8'));
   CACP_VERSION = packageJson.version;
-} catch (error) {
+} catch {
   console.warn('Could not load CACP version from package.json');
 }
 
@@ -75,8 +75,9 @@ const startWsServer = async () => {
         // Route all messages to MediaStore for processing
         mediaStore.handleExtensionMessage(msg);
         
-      } catch (error: any) {
-        sendDeskThingError(`❌ [CACP-Server] WebSocket message parse error: ${error?.message || error}`);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        sendDeskThingError(`❌ [CACP-Server] WebSocket message parse error: ${message}`);
         console.error('Full parse error:', error);
       }
     });
@@ -122,8 +123,9 @@ const start = async () => {
 
     isStarted = true;
     
-  } catch (error: any) {
-    sendDeskThingError(`❌ [CACP-Server] Failed to start CACP app: ${error?.message || error}`);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    sendDeskThingError(`❌ [CACP-Server] Failed to start CACP app: ${message}`);
     throw error;
   }
 };
@@ -155,8 +157,9 @@ const stop = async () => {
     sendDeskThingLog('Server Stopped');
     isStarted = false;
     
-  } catch (error: any) {
-    sendDeskThingError(`❌ [CACP-Server] Error during stop: ${error?.message || error}`);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    sendDeskThingError(`❌ [CACP-Server] Error during stop: ${message}`);
   }
 };
 
@@ -181,8 +184,9 @@ const purge = async () => {
     sendDeskThingLog('Server Purged');
     isStarted = false;
     
-  } catch (error: any) {
-    sendDeskThingError(`❌ [CACP-Server] Error during purge: ${error?.message || error}`);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    sendDeskThingError(`❌ [CACP-Server] Error during purge: ${message}`);
   }
 };
 
