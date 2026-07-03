@@ -157,7 +157,7 @@ export class CACPMediaStore {
 
       DeskThing.sendSong(musicPayload);
       this.lastSentPayload = musicPayload;
-      maybeAutoLookupTracklist(rawArtist, rawTitle);
+      maybeAutoLookupTracklist(rawArtist, rawTitle, this.extensionData.duration);
       sendDisplayMetadataToExtension(this.extensionWebSocket, {
         title: enriched.trackName,
         artist: enriched.artistLine,

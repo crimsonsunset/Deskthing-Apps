@@ -6,6 +6,7 @@ import {
   readTracklistCache,
 } from './tracklist-lookup.js';
 import type { TracklistResult } from './tracklist.types.js';
+import { getAutoLookupMinDurationSeconds } from '../initSettings.js';
 import { tracklistLogger } from '../logger.helpers.js';
 import {
   errorFields,
@@ -144,15 +145,26 @@ export async function runTracklistLookup(
  * Auto-lookup when the now-playing mix identity changes (artist + title).
  * @param {string | null | undefined} artist - Current artist from extension payload.
  * @param {string | null | undefined} title - Current mix title from extension payload.
+ * @param {number | null | undefined} durationSeconds - Track duration in seconds from extension payload.
  */
 export function maybeAutoLookupTracklist(
   artist: string | null | undefined,
   title: string | null | undefined,
+  durationSeconds: number | null | undefined,
 ): void {
   if (!artist?.trim() || !title?.trim()) {
     tracklistLogger.debug('Auto-lookup skipped — missing artist or title', {
       artist: artist ?? null,
       title: title ?? null,
+    });
+    return;
+  }
+
+  const thresholdSeconds = getAutoLookupMinDurationSeconds();
+  if (durationSeconds == null || durationSeconds < thresholdSeconds) {
+    tracklistLogger.debug('Auto-lookup skipped — below duration threshold', {
+      durationSeconds: durationSeconds ?? null,
+      thresholdSeconds,
     });
     return;
   }
