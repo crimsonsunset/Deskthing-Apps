@@ -1,12 +1,24 @@
+import type { LoggerInstance } from '@crimsonsunset/jsg-logger';
+import type {
+  FineTuneSeekResult,
+  ProgressBarSeekClick,
+  SeekClickRect,
+  SeekClickTarget,
+  SeekControllerHost,
+  SiteActionResult,
+  SoundCloudTiming,
+} from '../site-handler.types.js';
+import type { MediaElementRegistry } from './media-element-registry.js';
+
 /**
  * Computes the click target for a progress-bar seek, in pixels and ratio.
  * Pure — no DOM writes, no `this`, safe to unit test directly.
- * @param {{ width: number, left: number, top: number, height: number }} rect - Progress bar bounding rect
- * @param {number} time - Target seek time in seconds
- * @param {number} duration - Mix duration in seconds
- * @returns {{ clickX: number, clickY: number, percentage: number }}
  */
-export function computeSeekClickTarget(rect, time, duration) {
+export function computeSeekClickTarget(
+  rect: SeekClickRect,
+  time: number,
+  duration: number,
+): SeekClickTarget {
   const percentage = Math.max(0, Math.min(1, time / duration));
   const clickX = rect.left + rect.width * percentage;
   const clickY = rect.top + rect.height / 2;
@@ -18,17 +30,14 @@ export function computeSeekClickTarget(rect, time, duration) {
  * Reads/writes media elements through a shared MediaElementRegistry.
  */
 export class SeekController {
-  /**
-   * @param {import('./media-element-registry.js').MediaElementRegistry} registry - Shared media element state
-   * @param {import('@crimsonsunset/jsg-logger').LoggerComponent} log - Component logger from the parent handler
-   * @param {{
-   *   extractSoundCloudTiming: () => { position: number, duration: number },
-   *   getElement: (selectorKey: string) => Element | null,
-   *   parseTimeString: (timeStr: string) => number,
-   *   selectors: { progressBar: string, durationElement: string },
-   * }} host - DOM/timing helpers supplied by the parent handler until Phase 3 wiring
-   */
-  constructor(registry, log, host) {
+  registry: MediaElementRegistry;
+  log: LoggerInstance;
+  extractSoundCloudTiming: () => SoundCloudTiming;
+  getElement: (selectorKey: string) => Element | null;
+  parseTimeString: (timeStr: string) => number;
+  selectors: SeekControllerHost['selectors'];
+
+  constructor(registry: MediaElementRegistry, log: LoggerInstance, host: SeekControllerHost) {
     this.registry = registry;
     this.log = log;
     this.extractSoundCloudTiming = host.extractSoundCloudTiming.bind(host);
@@ -37,36 +46,19 @@ export class SeekController {
     this.selectors = host.selectors;
   }
 
-  /**
-   * Get current playback time in seconds
-   * @returns {number}
-   */
-  getCurrentTime() {
+  getCurrentTime(): number {
     const timing = this.extractSoundCloudTiming();
     return timing.position || 0;
   }
 
-  /**
-   * Get track duration in seconds
-   * @returns {number}
-   */
-  getDuration() {
+  getDuration(): number {
     const timing = this.extractSoundCloudTiming();
     return timing.duration || 0;
   }
 
-  /**
-   * Reads the mix duration straight from the visible UI (ARIA progressbar or
-   * duration text), bypassing any captured audio/video element entirely.
-   * Used to sanity-check `audioEl`/`mseElement` before trusting them for a
-   * direct `currentTime` seek — SoundCloud can recreate/swap media elements
-   * mid-stream, leaving a captured reference pointing at a stale or
-   * short-duration element whose `.duration` no longer matches the mix.
-   * @returns {number} Displayed duration in seconds, or 0 if not determinable.
-   */
-  getDisplayedDuration() {
+  getDisplayedDuration(): number {
     const progressContainer = document.querySelector(
-      '.playbackTimeline [role="progressbar"], .playbackTimeline__progressWrapper [role="progressbar"], .playControls [role="progressbar"]'
+      '.playbackTimeline [role="progressbar"], .playbackTimeline__progressWrapper [role="progressbar"], .playControls [role="progressbar"]',
     );
     if (progressContainer) {
       const max = parseFloat(progressContainer.getAttribute('aria-valuemax') || '');
@@ -75,8 +67,8 @@ export class SeekController {
       }
     }
 
-    const durationElement = this.getElement(this.selectors.durationElement);
-    if (durationElement && durationElement.textContent) {
+    const durationElement = this.getElement(this.selectors.durationElement ?? '');
+    if (durationElement?.textContent) {
       const parsed = this.parseTimeString(durationElement.textContent.trim());
       if (parsed > 0) {
         return parsed;
@@ -86,15 +78,7 @@ export class SeekController {
     return 0;
   }
 
-  /**
-   * Whether a media element's reported duration roughly agrees with the
-   * UI-displayed duration (within 5%, or always true when the displayed
-   * duration can't be determined).
-   * @param {HTMLMediaElement} element
-   * @param {number} displayedDuration
-   * @returns {boolean}
-   */
-  isMediaElementDurationTrustworthy(element, displayedDuration) {
+  isMediaElementDurationTrustworthy(element: HTMLMediaElement, displayedDuration: number): boolean {
     if (!displayedDuration || displayedDuration <= 0) {
       return true;
     }
@@ -103,15 +87,12 @@ export class SeekController {
     return Math.abs(element.duration - displayedDuration) <= tolerance;
   }
 
-  /**
-   * Logs a snapshot of all media timing sources for seek debugging.
-   * @param {string} label - Snapshot stage label (e.g. 'before', 'after').
-   * @param {number} requestedTime - Target seek time in seconds.
-   */
-  logSeekMediaSnapshot(label, requestedTime) {
+  logSeekMediaSnapshot(label: string, requestedTime: number): void {
     const displayedDuration = this.getDisplayedDuration();
     const timing = this.extractSoundCloudTiming();
-    const mediaElements = Array.from(document.querySelectorAll('audio, video')).map((element, index) => ({
+    const mediaElements = Array.from(document.querySelectorAll('audio, video'))
+      .filter((element): element is HTMLMediaElement => element instanceof HTMLMediaElement)
+      .map((element, index) => ({
       index,
       tag: element.tagName,
       duration: element.duration,
@@ -131,13 +112,7 @@ export class SeekController {
     });
   }
 
-  /**
-   * Schedules a post-seek position check to verify the page actually landed
-   * near the requested time.
-   * @param {number} requestedTime - Target seek time in seconds.
-   * @param {string} method - Seek method used (audioEl, mouse-sequence, etc.).
-   */
-  scheduleSeekPostCheck(requestedTime, method) {
+  scheduleSeekPostCheck(requestedTime: number, method: string): void {
     setTimeout(() => {
       const timing = this.extractSoundCloudTiming();
       const actualPosition = timing.position;
@@ -154,38 +129,20 @@ export class SeekController {
     }, 300);
   }
 
-  /**
-   * Finds the progress bar wrapper used for click-to-seek.
-   * @returns {Element | null} Clickable progress bar container
-   */
-  findProgressBarWrapper() {
+  findProgressBarWrapper(): Element | null {
     return document.querySelector('.playbackTimeline__progressWrapper[role="progressbar"]')
       || document.querySelector('.playbackTimeline [role="progressbar"]')
       || (() => {
-        const progressBar = this.getElement(this.selectors.progressBar);
+        const progressBar = this.getElement(this.selectors.progressBar ?? '');
         return progressBar?.parentElement ?? null;
       })();
   }
 
-  /**
-   * Finds the inner track element SoundCloud uses for its own scrub-position math.
-   * The outer `progressWrapper` has different padding/inset than this track, so
-   * computing click coordinates against the wrapper's rect drifts from where
-   * SoundCloud actually registers the click — this element's rect matches.
-   * @param {Element} wrapper - Progress bar wrapper from `findProgressBarWrapper`
-   * @returns {Element} The scrub track element, or the wrapper itself as fallback
-   */
-  findSeekTrackElement(wrapper) {
+  findSeekTrackElement(wrapper: Element): Element {
     return wrapper.querySelector('.playbackTimeline__progressBackground') || wrapper;
   }
 
-  /**
-   * Resolves viewport coordinates and the element under the pointer for a progress-bar seek.
-   * @param {number} time - Target position in seconds
-   * @param {number} duration - Mix duration in seconds
-   * @returns {{ clickable: Element, hitElement: Element, clickX: number, clickY: number, percentage: number, rect: DOMRect } | null}
-   */
-  resolveProgressBarSeekClick(time, duration) {
+  resolveProgressBarSeekClick(time: number, duration: number): ProgressBarSeekClick | null {
     const clickable = this.findProgressBarWrapper();
     if (!clickable || duration <= 0) {
       return null;
@@ -204,15 +161,7 @@ export class SeekController {
     return { clickable, hitElement: target, clickX, clickY, percentage, rect };
   }
 
-  /**
-   * Dispatches pointer and mouse events at viewport coordinates on the seek target.
-   * SoundCloud's player often listens on the element under the cursor (bar, fill, or handle),
-   * not the outer wrapper — elementFromPoint picks that node.
-   * @param {Element} target - Element to receive synthetic events
-   * @param {number} clickX - Viewport X coordinate
-   * @param {number} clickY - Viewport Y coordinate
-   */
-  dispatchSeekPointerClick(target, clickX, clickY) {
+  dispatchSeekPointerClick(target: Element, clickX: number, clickY: number): void {
     const pointerBase = {
       bubbles: true,
       cancelable: true,
@@ -240,13 +189,7 @@ export class SeekController {
     target.dispatchEvent(new MouseEvent('click', mouseBase));
   }
 
-  /**
-   * Seeks by clicking the progress bar at the ratio for the requested time.
-   * @param {number} time - Target position in seconds
-   * @param {number} duration - Mix duration in seconds
-   * @returns {{ success: boolean, action: string, time: number, method: string, error?: string } & Record<string, unknown>}
-   */
-  seekViaProgressBarClick(time, duration) {
+  seekViaProgressBarClick(time: number, duration: number): SiteActionResult {
     const resolved = this.resolveProgressBarSeekClick(time, duration);
     if (!resolved) {
       this.log.warn('[CACP-Seek] soundcloud seek click — no clickable progress element found', {
@@ -269,9 +212,9 @@ export class SeekController {
       rectTop: rect.top,
       rectWidth: rect.width,
       rectHeight: rect.height,
-      clickableClass: clickable.className,
-      hitElementClass: hitElement.className,
-      rawHitClass: rawHit?.className ?? null,
+      clickableClass: (clickable as HTMLElement).className,
+      hitElementClass: (hitElement as HTMLElement).className,
+      rawHitClass: rawHit ? (rawHit as HTMLElement).className : null,
       usedElementFromPoint: hitElement !== clickable,
     };
 
@@ -279,11 +222,7 @@ export class SeekController {
     return { success: true, action: 'seek', time, method: 'pointer-click', ...diagnostics };
   }
 
-  /**
-   * Reads the current playback position straight from the ARIA progressbar.
-   * @returns {number | null} Displayed position in seconds, or null if unavailable.
-   */
-  getDisplayedPosition() {
+  getDisplayedPosition(): number | null {
     const bar = document.querySelector(
       '.playbackTimeline__progressWrapper[role="progressbar"], .playbackTimeline [role="progressbar"], .playControls [role="progressbar"]',
     );
@@ -295,39 +234,19 @@ export class SeekController {
     return Number.isNaN(now) ? null : Math.round(now);
   }
 
-  /**
-   * Dispatches a single arrow-key seek step on the document body.
-   * SoundCloud's global shortcut handler moves playback ~5s per press and,
-   * unlike a raw media element, accepts synthetic keyboard events.
-   * @param {'ArrowRight' | 'ArrowLeft'} key - Direction key to fire
-   */
-  dispatchArrowSeek(key) {
+  dispatchArrowSeek(key: 'ArrowRight' | 'ArrowLeft'): void {
     const keyCode = key === 'ArrowRight' ? 39 : 37;
     const opts = { key, code: key, keyCode, which: keyCode, bubbles: true, cancelable: true };
     document.body.dispatchEvent(new KeyboardEvent('keydown', opts));
     document.body.dispatchEvent(new KeyboardEvent('keyup', opts));
   }
 
-  /**
-   * Fine-tunes playback toward the target, reading the ARIA position between
-   * steps. Two phases:
-   *   1. Arrow-key steps (~5s each), spaced ~90ms apart so SoundCloud's key
-   *      handler can process each press individually (a synchronous burst
-   *      collapses into a single step), with an overshoot guard — the loop
-   *      stops once a further press could only overshoot, so it never
-   *      oscillates.
-   *   2. A single absolute progress-bar click, but only when the bar's pixel
-   *      resolution can actually resolve the requested tolerance (short/medium
-   *      tracks). On long DJ sets the pixel floor exceeds the tolerance, so this
-   *      is skipped and the arrow-floor result is returned with
-   *      reachedTolerance: false rather than thrashing.
-   * @param {number} time - Target position in seconds
-   * @param {number} duration - Track duration in seconds (for pixel-resolution math)
-   * @param {number} [toleranceSeconds] - Acceptable |error| to stop at
-   * @param {number} [maxPresses] - Total arrow-press budget
-   * @returns {Promise<{ finalPosition: number | null, error: number | null, presses: number, precisionClick: boolean, pixelSeconds: number | null, reachedTolerance: boolean, skipped?: boolean }>}
-   */
-  async fineTuneToTarget(time, duration, toleranceSeconds = 1, maxPresses = 12) {
+  async fineTuneToTarget(
+    time: number,
+    duration: number,
+    toleranceSeconds = 1,
+    maxPresses = 12,
+  ): Promise<FineTuneSeekResult> {
     const arrowStep = 5;
     let actual = this.getDisplayedPosition();
 
@@ -376,9 +295,9 @@ export class SeekController {
 
     let precisionClick = false;
     if (
-      actual != null &&
-      Math.abs(time - actual) > toleranceSeconds &&
-      pixelSeconds <= toleranceSeconds
+      actual != null
+      && Math.abs(time - actual) > toleranceSeconds
+      && pixelSeconds <= toleranceSeconds
     ) {
       this.seekViaProgressBarClick(time, duration);
       precisionClick = true;
@@ -386,7 +305,7 @@ export class SeekController {
       actual = this.getDisplayedPosition();
     }
 
-    const fineTuneResult = {
+    const fineTuneResult: FineTuneSeekResult = {
       finalPosition: actual,
       error: actual == null ? null : time - actual,
       presses,
@@ -398,12 +317,7 @@ export class SeekController {
     return fineTuneResult;
   }
 
-  /**
-   * Seek to specific time
-   * @param {number} time - Target position in seconds
-   * @returns {Promise<Record<string, unknown>>}
-   */
-  async seek(time) {
+  async seek(time: number): Promise<SiteActionResult> {
     const displayedDuration = this.getDisplayedDuration();
     this.logSeekMediaSnapshot('before', time);
     this.log.info('[CACP-Seek] soundcloud seek start', {
@@ -460,11 +374,12 @@ export class SeekController {
     } else {
       this.log.info('[CACP-Seek] soundcloud mseElement skipped', {
         time,
-        hasMseElement: this.registry.mseElement instanceof HTMLMediaElement,
+        hasMseElement: !!this.registry.mseElement,
       });
     }
 
-    const mediaElements = document.querySelectorAll('audio, video');
+    const mediaElements = Array.from(document.querySelectorAll('audio, video'))
+      .filter((element): element is HTMLMediaElement => element instanceof HTMLMediaElement);
     for (const element of mediaElements) {
       if (!element.duration || element.duration <= 0) {
         continue;
@@ -513,15 +428,21 @@ export class SeekController {
     });
 
     this.scheduleSeekPostCheck(time, 'click+arrows');
-    return { success: true, action: 'seek', time, method: 'click+arrows', coarseMethod: coarse.method, ...tune };
+    return {
+      success: true,
+      action: 'seek',
+      time,
+      method: 'click+arrows',
+      coarseMethod: coarse.method,
+      fineTuneError: tune.error,
+      fineTunePosition: tune.finalPosition,
+      fineTunePresses: tune.presses,
+      fineTunePrecisionClick: tune.precisionClick,
+      fineTuneReachedTolerance: tune.reachedTolerance,
+    };
   }
 
-  /**
-   * Sleep utility
-   * @param {number} ms Milliseconds to sleep
-   * @returns {Promise<void>}
-   */
-  sleep(ms) {
+  sleep(ms: number): Promise<void> {
     return new Promise((resolve) => {
       setTimeout(resolve, ms);
     });

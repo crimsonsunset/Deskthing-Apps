@@ -1,12 +1,19 @@
 import { SiteHandler } from './base-handler.js';
-import logger from '@crimsonsunset/jsg-logger';
+import jsgLogger, { type LoggerInstanceType } from '@crimsonsunset/jsg-logger';
+import type { SiteActionResult, SiteHandlerConfig, TrackInfo } from './site-handler.types.js';
+
+const logger = jsgLogger as unknown as LoggerInstanceType;
+
+interface YouTubeTrackInfo extends TrackInfo {
+  site?: string;
+}
 
 /**
  * YouTube Site Handler for CACP
  * Supports both YouTube and YouTube Music
  */
 export class YouTubeHandler extends SiteHandler {
-  static config = {
+  static config: SiteHandlerConfig = {
     name: 'YouTube',
     urlPatterns: ['youtube.com', 'music.youtube.com'],
     selectors: {
@@ -37,11 +44,18 @@ export class YouTubeHandler extends SiteHandler {
     }
   };
 
+  isYouTubeMusic: boolean;
+  currentVideoElement: HTMLVideoElement | null;
+  videoElementInterval: ReturnType<typeof setInterval> | null;
+  mediaSessionInterval: ReturnType<typeof setInterval> | null;
+
   constructor() {
     super();
     this.log = logger.getComponent('youtube');
     this.isYouTubeMusic = window.location.hostname.includes('music.youtube.com');
     this.currentVideoElement = null;
+    this.videoElementInterval = null;
+    this.mediaSessionInterval = null;
     
     this.log.debug('YouTube handler constructed', {
       isYouTubeMusic: this.isYouTubeMusic,
@@ -53,7 +67,7 @@ export class YouTubeHandler extends SiteHandler {
   /**
    * Initialize YouTube-specific functionality
    */
-  async initialize() {
+  async initialize(): Promise<boolean> {
     this.log.info('Initializing YouTube handler', {
       isYouTubeMusic: this.isYouTubeMusic,
       hostname: window.location.hostname,
@@ -80,10 +94,11 @@ export class YouTubeHandler extends SiteHandler {
       });
       return true;
     } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
       this.log.error('YouTube handler initialization failed', {
-        error: error.message,
-        stack: error.stack,
-        isYouTubeMusic: this.isYouTubeMusic
+        error: err.message,
+        stack: err.stack,
+        isYouTubeMusic: this.isYouTubeMusic,
       });
       return false;
     }
@@ -92,19 +107,19 @@ export class YouTubeHandler extends SiteHandler {
   /**
    * Check if YouTube player is ready
    */
-  isReady() {
-    // Check for video element and player container
-    const hasVideo = !!this.getElement(this.constructor.config.selectors.videoElement);
-    const hasPlayer = !!this.getElement(this.constructor.config.selectors.playerContainer);
-    const hasMediaSession = navigator.mediaSession && navigator.mediaSession.metadata;
-    
+  isReady(): boolean {
+    const config = YouTubeHandler.config;
+    const hasVideo = !!this.getElement(config.selectors.videoElement ?? '');
+    const hasPlayer = !!this.getElement(config.selectors.playerContainer ?? '');
+    const hasMediaSession = !!(navigator.mediaSession && navigator.mediaSession.metadata);
+
     return hasVideo || hasPlayer || hasMediaSession;
   }
 
   /**
    * Check if user is logged in to YouTube
    */
-  isLoggedIn() {
+  isLoggedIn(): boolean {
     // Look for user avatar or account menu
     const userAvatar = document.querySelector('#avatar-btn, .ytmusic-nav-bar .right-content');
     const signInButton = document.querySelector('#sign-in-button, .sign-in-link');
@@ -115,8 +130,8 @@ export class YouTubeHandler extends SiteHandler {
   /**
    * Get current track information
    */
-  getTrackInfo() {
-    const info = {
+  getTrackInfo(): YouTubeTrackInfo {
+    const info: YouTubeTrackInfo = {
       title: 'Unknown Video',
       artist: 'Unknown Channel',
       album: '',
@@ -131,27 +146,27 @@ export class YouTubeHandler extends SiteHandler {
       info.title = metadata.title || info.title;
       info.artist = metadata.artist || info.artist;
       info.album = metadata.album || info.album;
-      info.artwork = metadata.artwork || [];
+      info.artwork = metadata.artwork ? [...metadata.artwork] : [];
       info.isPlaying = navigator.mediaSession.playbackState === 'playing';
     }
 
     // Enhance with DOM elements if MediaSession is incomplete
     if (info.title === 'Unknown Video') {
-      const titleElement = this.getElement(this.constructor.config.selectors.titleElement);
+      const titleElement = this.getElement(YouTubeHandler.config.selectors.titleElement ?? '');
       if (titleElement) {
-        info.title = this.getElementText(titleElement);
+        info.title = this.getElementText(titleElement as unknown as string);
       }
     }
 
     if (info.artist === 'Unknown Channel') {
-      const artistElement = this.getElement(this.constructor.config.selectors.artistElement);
+      const artistElement = this.getElement(YouTubeHandler.config.selectors.artistElement ?? '');
       if (artistElement) {
-        info.artist = this.getElementText(artistElement);
+        info.artist = this.getElementText(artistElement as unknown as string);
       }
     }
 
     // Get artwork if not available from MediaSession
-    if (info.artwork.length === 0) {
+    if ((info.artwork?.length ?? 0) === 0) {
       // Try video thumbnail or album art
       const artworkSelectors = [
         '.ytmusic-player-bar img',
@@ -162,7 +177,8 @@ export class YouTubeHandler extends SiteHandler {
       for (const selector of artworkSelectors) {
         const element = document.querySelector(selector);
         if (element) {
-          const src = element.src || element.content;
+          const htmlElement = element as HTMLImageElement & HTMLMetaElement;
+          const src = htmlElement.src || htmlElement.content;
           if (src) {
             info.artwork = [{ src }];
             break;
@@ -177,95 +193,79 @@ export class YouTubeHandler extends SiteHandler {
   /**
    * Get current playback time in seconds
    */
-  getCurrentTime() {
-    // Try video element first
+  getCurrentTime(): number {
     if (this.currentVideoElement) {
       return this.currentVideoElement.currentTime || 0;
     }
 
-    // Try any video element
-    const videoElement = this.getElement(this.constructor.config.selectors.videoElement);
-    if (videoElement) {
+    const videoElement = this.getElement(YouTubeHandler.config.selectors.videoElement ?? '');
+    if (videoElement instanceof HTMLVideoElement) {
       return videoElement.currentTime || 0;
     }
 
-    // Fallback: try to parse from time display
-    const currentTimeElement = this.getElement(this.constructor.config.selectors.currentTime);
+    const currentTimeElement = this.getElement(YouTubeHandler.config.selectors.currentTime ?? '');
     if (currentTimeElement) {
-      return this.parseTimeString(this.getElementText(currentTimeElement));
+      return this.parseTimeString(this.getElementText(currentTimeElement as unknown as string));
     }
 
     return 0;
   }
 
-  /**
-   * Get track duration in seconds
-   */
-  getDuration() {
-    // Try video element first
+  getDuration(): number {
     if (this.currentVideoElement) {
       return this.currentVideoElement.duration || 0;
     }
 
-    // Try any video element
-    const videoElement = this.getElement(this.constructor.config.selectors.videoElement);
-    if (videoElement) {
+    const videoElement = this.getElement(YouTubeHandler.config.selectors.videoElement ?? '');
+    if (videoElement instanceof HTMLVideoElement) {
       return videoElement.duration || 0;
     }
 
-    // Fallback: try to parse from duration display
-    const durationElement = this.getElement(this.constructor.config.selectors.duration);
+    const durationElement = this.getElement(YouTubeHandler.config.selectors.duration ?? '');
     if (durationElement) {
-      return this.parseTimeString(this.getElementText(durationElement));
+      return this.parseTimeString(this.getElementText(durationElement as unknown as string));
     }
 
     return 0;
   }
 
-  /**
-   * Get current playing state
-   */
-  getPlayingState() {
+  getPlayingState(): boolean {
     // Try MediaSession first
     if (navigator.mediaSession) {
       return navigator.mediaSession.playbackState === 'playing';
     }
     
-    // Try video element
-    const videoElement = this.currentVideoElement || this.getElement(this.constructor.config.selectors.videoElement);
-    if (videoElement) {
+    const videoElement = this.currentVideoElement
+      || this.getElement(YouTubeHandler.config.selectors.videoElement ?? '');
+    if (videoElement instanceof HTMLVideoElement) {
       return !videoElement.paused;
     }
-    
-    // Fallback: check if pause button is visible (indicating playing)
+
     const pauseButton = this.getElement(
-      this.isYouTubeMusic ? 
-        this.constructor.config.selectors.ytmPauseButton : 
-        this.constructor.config.selectors.pauseButton
+      this.isYouTubeMusic
+        ? YouTubeHandler.config.selectors.ytmPauseButton ?? ''
+        : YouTubeHandler.config.selectors.pauseButton ?? '',
     );
     return !!pauseButton;
   }
 
-  /**
-   * Play current video/track
-   */
-  async play() {
+  async play(): Promise<SiteActionResult> {
     this.log.info(`Play command`, { isYouTubeMusic: this.isYouTubeMusic });
     
     // Try appropriate play button
-    const playButtonSelector = this.isYouTubeMusic ? 
-      this.constructor.config.selectors.ytmPlayButton : 
-      this.constructor.config.selectors.playButton;
-    
+    const playButtonSelector = this.isYouTubeMusic
+      ? YouTubeHandler.config.selectors.ytmPlayButton ?? ''
+      : YouTubeHandler.config.selectors.playButton ?? '';
+
     const playButton = this.getElement(playButtonSelector);
     if (playButton) {
       this.clickElement(playButton);
       return { success: true, action: 'play' };
     }
 
-    // Try video element directly
-    const videoElement = this.currentVideoElement || this.getElement(this.constructor.config.selectors.videoElement);
-    if (videoElement) {
+    const videoElement = this.currentVideoElement
+      || this.getElement(YouTubeHandler.config.selectors.videoElement ?? '');
+    if (videoElement instanceof HTMLVideoElement) {
       await videoElement.play();
       return { success: true, action: 'play', method: 'video' };
     }
@@ -283,23 +283,23 @@ export class YouTubeHandler extends SiteHandler {
   /**
    * Pause current video/track
    */
-  async pause() {
+  async pause(): Promise<SiteActionResult> {
     this.log.info(`Pause command`, { isYouTubeMusic: this.isYouTubeMusic });
     
     // Try appropriate pause button
-    const pauseButtonSelector = this.isYouTubeMusic ? 
-      this.constructor.config.selectors.ytmPauseButton : 
-      this.constructor.config.selectors.pauseButton;
-    
+    const pauseButtonSelector = this.isYouTubeMusic
+      ? YouTubeHandler.config.selectors.ytmPauseButton ?? ''
+      : YouTubeHandler.config.selectors.pauseButton ?? '';
+
     const pauseButton = this.getElement(pauseButtonSelector);
     if (pauseButton) {
       this.clickElement(pauseButton);
       return { success: true, action: 'pause' };
     }
 
-    // Try video element directly
-    const videoElement = this.currentVideoElement || this.getElement(this.constructor.config.selectors.videoElement);
-    if (videoElement) {
+    const videoElement = this.currentVideoElement
+      || this.getElement(YouTubeHandler.config.selectors.videoElement ?? '');
+    if (videoElement instanceof HTMLVideoElement) {
       videoElement.pause();
       return { success: true, action: 'pause', method: 'video' };
     }
@@ -317,16 +317,16 @@ export class YouTubeHandler extends SiteHandler {
   /**
    * Skip to next video/track
    */
-  async next() {
+  async next(): Promise<SiteActionResult> {
     this.log.info(`Next track command`, { isYouTubeMusic: this.isYouTubeMusic });
     
     // Try appropriate next button
-    const nextButtonSelector = this.isYouTubeMusic ? 
-      this.constructor.config.selectors.ytmNextButton : 
-      this.constructor.config.selectors.nextButton;
-    
+    const nextButtonSelector = this.isYouTubeMusic
+      ? YouTubeHandler.config.selectors.ytmNextButton ?? ''
+      : YouTubeHandler.config.selectors.nextButton ?? '';
+
     const nextButton = this.getElement(nextButtonSelector);
-    if (nextButton && !nextButton.disabled) {
+    if (nextButton && !(nextButton as HTMLButtonElement).disabled) {
       this.clickElement(nextButton);
       return { success: true, action: 'next' };
     }
@@ -346,16 +346,16 @@ export class YouTubeHandler extends SiteHandler {
   /**
    * Skip to previous video/track
    */
-  async previous() {
+  async previous(): Promise<SiteActionResult> {
     this.log.info(`Previous track command`, { isYouTubeMusic: this.isYouTubeMusic });
     
     // Try appropriate previous button
-    const prevButtonSelector = this.isYouTubeMusic ? 
-      this.constructor.config.selectors.ytmPrevButton : 
-      this.constructor.config.selectors.prevButton;
-    
+    const prevButtonSelector = this.isYouTubeMusic
+      ? YouTubeHandler.config.selectors.ytmPrevButton ?? ''
+      : YouTubeHandler.config.selectors.prevButton ?? '';
+
     const prevButton = this.getElement(prevButtonSelector);
-    if (prevButton && !prevButton.disabled) {
+    if (prevButton && !(prevButton as HTMLButtonElement).disabled) {
       this.clickElement(prevButton);
       return { success: true, action: 'previous' };
     }
@@ -375,19 +375,20 @@ export class YouTubeHandler extends SiteHandler {
   /**
    * Seek to specific time
    */
-  async seek(time) {
+  async seek(time: number): Promise<SiteActionResult> {
     this.log.info('[CACP-Seek] youtube seek start', { time, isYouTubeMusic: this.isYouTubeMusic });
     
     // Try video element first
-    const videoElement = this.currentVideoElement || this.getElement(this.constructor.config.selectors.videoElement);
-    if (videoElement) {
+    const videoElement = this.currentVideoElement
+      || this.getElement(YouTubeHandler.config.selectors.videoElement ?? '');
+    if (videoElement instanceof HTMLVideoElement) {
       videoElement.currentTime = time;
       this.log.info('[CACP-Seek] youtube seek via videoElement', { time });
       return { success: true, action: 'seek', time };
     }
 
     // Try clicking on progress bar
-    const progressBar = this.getElement(this.constructor.config.selectors.progressBar);
+    const progressBar = this.getElement(YouTubeHandler.config.selectors.progressBar ?? '');
     const duration = this.getDuration();
     
     if (progressBar && duration > 0) {
@@ -408,10 +409,10 @@ export class YouTubeHandler extends SiteHandler {
   /**
    * Set up video element monitoring
    */
-  setupVideoElementMonitoring() {
+  setupVideoElementMonitoring(): void {
     const findVideoElement = () => {
-      const videoElement = this.getElement(this.constructor.config.selectors.videoElement);
-      if (videoElement && videoElement !== this.currentVideoElement) {
+      const videoElement = this.getElement(YouTubeHandler.config.selectors.videoElement ?? '');
+      if (videoElement instanceof HTMLVideoElement && videoElement !== this.currentVideoElement) {
         this.log.debug(`Video element found`, { isYouTubeMusic: this.isYouTubeMusic });
         this.currentVideoElement = videoElement;
         
@@ -434,7 +435,8 @@ export class YouTubeHandler extends SiteHandler {
       try {
         findVideoElement();
       } catch (error) {
-        if (error.message && error.message.includes('Extension context invalidated')) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        if (err.message.includes('Extension context invalidated') && this.videoElementInterval) {
           clearInterval(this.videoElementInterval);
           this.videoElementInterval = null;
         }
@@ -445,7 +447,7 @@ export class YouTubeHandler extends SiteHandler {
   /**
    * Set up MediaSession monitoring
    */
-  setupMediaSessionMonitoring() {
+  setupMediaSessionMonitoring(): void {
     if (!navigator.mediaSession) {
       this.log.warn(`MediaSession API not available`, { isYouTubeMusic: this.isYouTubeMusic });
       return;
@@ -453,7 +455,7 @@ export class YouTubeHandler extends SiteHandler {
 
     this.log.debug(`Setting up MediaSession monitoring`, { isYouTubeMusic: this.isYouTubeMusic });
     
-    let lastMetadata = null;
+    let lastMetadata: string | null = null;
     
     const checkMediaSession = () => {
       if (navigator.mediaSession.metadata) {
@@ -476,7 +478,8 @@ export class YouTubeHandler extends SiteHandler {
       try {
         checkMediaSession();
       } catch (error) {
-        if (error.message && error.message.includes('Extension context invalidated')) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        if (err.message.includes('Extension context invalidated') && this.mediaSessionInterval) {
           clearInterval(this.mediaSessionInterval);
           this.mediaSessionInterval = null;
         }
@@ -487,7 +490,7 @@ export class YouTubeHandler extends SiteHandler {
   /**
    * Set up DOM observer for dynamic content changes
    */
-  setupDOMObserver() {
+  setupDOMObserver(): void {
     const observer = new MutationObserver(() => {
       // Re-find video element when DOM changes significantly
       this.setupVideoElementMonitoring();
@@ -502,7 +505,7 @@ export class YouTubeHandler extends SiteHandler {
   /**
    * Clean up all intervals and listeners
    */
-  cleanup() {
+  cleanup(): void {
     this.log.debug('🧹 Cleaning up handler');
     
     // Clean up video element monitoring

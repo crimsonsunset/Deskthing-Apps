@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { computeSeekClickTarget } from './seek-controller.js';
+import { computeSeekClickTarget } from './seek-controller.ts';
 
 test('computeSeekClickTarget maps midpoint time to bar center', () => {
   const rect = { left: 100, top: 50, width: 200, height: 20 };

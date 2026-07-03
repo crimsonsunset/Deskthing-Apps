@@ -4,6 +4,9 @@
  * and write through this instance instead of holding their own copies.
  */
 export class MediaElementRegistry {
+  audioEl: HTMLMediaElement | null;
+  mseElement: HTMLMediaElement | null;
+
   constructor() {
     this.audioEl = null;
     this.mseElement = null;

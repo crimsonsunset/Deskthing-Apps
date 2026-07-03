@@ -1,15 +1,22 @@
 import { SiteHandler } from './base-handler.js';
-import logger from '@crimsonsunset/jsg-logger';
+import jsgLogger, { type LoggerInstanceType } from '@crimsonsunset/jsg-logger';
+import type { SiteActionResult, SiteHandlerConfig, SiteHandlerSelectors, TrackInfo } from './site-handler.types.js';
 import { MediaElementRegistry } from './soundcloud/media-element-registry.js';
 import { SeekController } from './soundcloud/seek-controller.js';
 import { MediaDetectionController } from './soundcloud/media-detection-controller.js';
+
+const logger = jsgLogger as unknown as LoggerInstanceType;
+
+interface SoundCloudTrackInfo extends TrackInfo {
+  site?: string;
+}
 
 /**
  * SoundCloud Site Handler for CACP
  * Extracted from working SoundCloud extension with MSE + MediaSession integration
  */
 export class SoundCloudHandler extends SiteHandler {
-  static config = {
+  static config: SiteHandlerConfig = {
     name: 'SoundCloud',
     urlPatterns: ['soundcloud.com'],
     selectors: {
@@ -26,6 +33,19 @@ export class SoundCloudHandler extends SiteHandler {
     }
   };
 
+  selectors: SiteHandlerSelectors;
+  isStreamingActive: boolean;
+  currentTrack: SoundCloudTrackInfo | null;
+  mediaSessionData: Record<string, unknown>;
+  positionUpdateInterval: ReturnType<typeof setInterval> | null;
+  lastLoggedPosition: number;
+  lastLoggedTime: number;
+  segmentLogged: boolean;
+  registry: MediaElementRegistry;
+  mediaDetection: MediaDetectionController;
+  seekController: SeekController;
+  mediaSessionInterval: ReturnType<typeof setInterval> | null;
+
   constructor() {
     super();
 
@@ -39,6 +59,7 @@ export class SoundCloudHandler extends SiteHandler {
     this.lastLoggedPosition = 0;
     this.lastLoggedTime = 0;
     this.segmentLogged = false;
+    this.mediaSessionInterval = null;
 
     this.registry = new MediaElementRegistry();
     this.mediaDetection = new MediaDetectionController(this.registry, this.log, this);
@@ -57,7 +78,7 @@ export class SoundCloudHandler extends SiteHandler {
    * Initialize SoundCloud-specific functionality
    * @returns {Promise<boolean>}
    */
-  async initialize() {
+  async initialize(): Promise<boolean> {
     this.log.info('Initializing SoundCloud handler...');
 
     try {
@@ -98,10 +119,11 @@ export class SoundCloudHandler extends SiteHandler {
       this.log.info('SoundCloud handler initialized successfully');
       return true;
     } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
       this.log.error('SoundCloud handler initialization failed', {
-        error: error.message,
-        stack: error.stack,
-        url: window.location.href
+        error: err.message,
+        stack: err.stack,
+        url: window.location.href,
       });
       return false;
     }
@@ -111,10 +133,10 @@ export class SoundCloudHandler extends SiteHandler {
    * Check if SoundCloud player is ready
    * @returns {boolean}
    */
-  isReady() {
+  isReady(): boolean {
     this.log.trace('Checking if SoundCloud handler is ready...');
 
-    const hasControls = !!document.querySelector(this.constructor.config.selectors.playerContainer);
+    const hasControls = !!document.querySelector(SoundCloudHandler.config.selectors.playerContainer ?? '');
     const mediaSessionObj = (navigator.mediaSession && navigator.mediaSession.metadata) ? navigator.mediaSession.metadata : null;
     const hasMediaSession = !!mediaSessionObj;
     const hasMediaEl = !!(this.registry.audioEl && this.registry.audioEl.duration > 0);
@@ -135,7 +157,7 @@ export class SoundCloudHandler extends SiteHandler {
    * Check if user is logged in to SoundCloud
    * @returns {boolean}
    */
-  isLoggedIn() {
+  isLoggedIn(): boolean {
     const userMenu = document.querySelector('.header__userNavButton, .header__userNav');
     const uploadButton = document.querySelector('.header__upload, [href="/upload"]');
 
@@ -146,23 +168,24 @@ export class SoundCloudHandler extends SiteHandler {
    * Debug method to check what elements are available on the page
    * @returns {Record<string, unknown>}
    */
-  debugPageElements() {
+  debugPageElements(): Record<string, unknown> {
     this.log.debug('=== SoundCloud Page Debug ===');
 
-    const config = this.constructor.config.selectors;
-    const elementCheck = {};
+    const config = SoundCloudHandler.config.selectors;
+    const elementCheck: Record<string, unknown> = {};
 
     for (const [key, selector] of Object.entries(config)) {
+      if (!selector) continue;
       const element = document.querySelector(selector);
       elementCheck[key] = {
         selector,
         found: !!element,
         element: element ? {
           tagName: element.tagName,
-          className: element.className,
+          className: (element as HTMLElement).className,
           id: element.id,
-          textContent: element.textContent?.slice(0, 50)
-        } : null
+          textContent: element.textContent?.slice(0, 50),
+        } : null,
       };
     }
 
@@ -191,7 +214,7 @@ export class SoundCloudHandler extends SiteHandler {
       '.header__userNav'
     ];
 
-    const foundElements = {};
+    const foundElements: Record<string, unknown> = {};
     commonElements.forEach(selector => {
       const elements = document.querySelectorAll(selector);
       foundElements[selector] = {
@@ -224,10 +247,10 @@ export class SoundCloudHandler extends SiteHandler {
    * Get current track information
    * @returns {Record<string, unknown>}
    */
-  getTrackInfo() {
+  getTrackInfo(): SoundCloudTrackInfo {
     this.log.trace('Extracting track information');
 
-    const info = {
+    const info: SoundCloudTrackInfo = {
       title: 'Unknown Track',
       artist: 'Unknown Artist',
       album: '',
@@ -238,10 +261,10 @@ export class SoundCloudHandler extends SiteHandler {
 
     if (navigator.mediaSession && navigator.mediaSession.metadata) {
       const metadata = navigator.mediaSession.metadata;
-      info.title = this.sanitizeTitle(metadata.title) || info.title;
+      info.title = this.sanitizeTitle(metadata.title ?? undefined) || info.title;
       info.artist = metadata.artist || info.artist;
       info.album = metadata.album || info.album;
-      info.artwork = metadata.artwork || [];
+      info.artwork = metadata.artwork ? [...metadata.artwork] : [];
       info.isPlaying = navigator.mediaSession.playbackState === 'playing';
 
       this.log.trace('MediaSession data extracted', {
@@ -268,7 +291,7 @@ export class SoundCloudHandler extends SiteHandler {
 
       for (const selector of titleElements) {
         const element = document.querySelector(selector);
-        if (element && element.textContent.trim()) {
+        if (element?.textContent?.trim()) {
           info.title = this.sanitizeTitle(element.textContent.trim());
           this.log.trace('Title extracted from DOM', {
             selector,
@@ -294,7 +317,7 @@ export class SoundCloudHandler extends SiteHandler {
 
       for (const selector of artistElements) {
         const element = document.querySelector(selector);
-        if (element && element.textContent.trim()) {
+        if (element?.textContent?.trim()) {
           info.artist = element.textContent.trim();
           this.log.trace('Artist extracted from DOM', {
             selector,
@@ -309,7 +332,7 @@ export class SoundCloudHandler extends SiteHandler {
       }
     }
 
-    if (info.artwork.length === 0) {
+    if ((info.artwork?.length ?? 0) === 0) {
       const artworkElements = [
         '.playbackSoundBadge__avatar img',
         '.image__full',
@@ -318,7 +341,7 @@ export class SoundCloudHandler extends SiteHandler {
 
       for (const selector of artworkElements) {
         const element = document.querySelector(selector);
-        if (element && element.src) {
+        if (element instanceof HTMLImageElement && element.src) {
           info.artwork = [{ src: element.src }];
           break;
         }
@@ -342,7 +365,7 @@ export class SoundCloudHandler extends SiteHandler {
    * Get current playback time in seconds
    * @returns {number}
    */
-  getCurrentTime() {
+  getCurrentTime(): number {
     return this.seekController.getCurrentTime();
   }
 
@@ -350,7 +373,7 @@ export class SoundCloudHandler extends SiteHandler {
    * Get track duration in seconds
    * @returns {number}
    */
-  getDuration() {
+  getDuration(): number {
     return this.seekController.getDuration();
   }
 
@@ -358,13 +381,13 @@ export class SoundCloudHandler extends SiteHandler {
    * Get current playing state
    * @returns {boolean}
    */
-  getPlayingState() {
+  getPlayingState(): boolean {
     if (navigator.mediaSession) {
       return navigator.mediaSession.playbackState === 'playing';
     }
 
     if (this.registry.audioEl) return !this.registry.audioEl.paused;
-    const pauseButton = this.getElement(this.constructor.config.selectors.pauseButton);
+    const pauseButton = this.getElement(SoundCloudHandler.config.selectors.pauseButton ?? '');
     return !!pauseButton;
   }
 
@@ -372,7 +395,7 @@ export class SoundCloudHandler extends SiteHandler {
    * Play current track (with MediaSession fallback + position tracking)
    * @returns {Promise<Record<string, unknown>>}
    */
-  async play() {
+  async play(): Promise<SiteActionResult> {
     this.log.debug('Play command - trying MediaSession first, then buttons');
 
     if (navigator.mediaSession && navigator.mediaSession.setActionHandler) {
@@ -380,16 +403,17 @@ export class SoundCloudHandler extends SiteHandler {
         this.log.trace('Attempting MediaSession play control');
         navigator.mediaSession.setActionHandler('play', null);
       } catch (error) {
-        this.log.warn('MediaSession play control failed', { error: error.message });
+        const err = error instanceof Error ? error : new Error(String(error));
+        this.log.warn('MediaSession play control failed', { error: err.message });
       }
     }
 
-    const playButton = this.getElement(this.constructor.config.selectors.playButton)
+    const playButton = this.getElement(SoundCloudHandler.config.selectors.playButton ?? '')
       || document.querySelector('.playControls .playControls__play')
       || document.querySelector('.playControls button[aria-label*="play" i]')
       || document.querySelector('.playControls button');
     if (playButton) {
-      this.log.debug('Clicking play button', { className: playButton.className });
+      this.log.debug('Clicking play button', { className: (playButton as HTMLElement).className });
       this.clickElement(playButton);
       this.startPositionTracking();
       return { success: true, action: 'play' };
@@ -410,7 +434,7 @@ export class SoundCloudHandler extends SiteHandler {
    * Pause current track (with MediaSession fallback + stop position tracking)
    * @returns {Promise<Record<string, unknown>>}
    */
-  async pause() {
+  async pause(): Promise<SiteActionResult> {
     this.log.debug('Pause command - trying MediaSession first, then buttons');
 
     if (navigator.mediaSession && navigator.mediaSession.setActionHandler) {
@@ -418,16 +442,17 @@ export class SoundCloudHandler extends SiteHandler {
         this.log.trace('Attempting MediaSession pause control');
         navigator.mediaSession.setActionHandler('pause', null);
       } catch (error) {
-        this.log.warn('MediaSession pause control failed', { error: error.message });
+        const err = error instanceof Error ? error : new Error(String(error));
+        this.log.warn('MediaSession pause control failed', { error: err.message });
       }
     }
 
-    const pauseButton = this.getElement(this.constructor.config.selectors.pauseButton)
+    const pauseButton = this.getElement(SoundCloudHandler.config.selectors.pauseButton ?? '')
       || document.querySelector('.playControls .playControls__pause')
       || document.querySelector('.playControls button[aria-label*="pause" i]')
       || document.querySelector('.playControls button');
     if (pauseButton) {
-      this.log.debug('Clicking pause button', { className: pauseButton.className });
+      this.log.debug('Clicking pause button', { className: (pauseButton as HTMLElement).className });
       this.clickElement(pauseButton);
       this.stopPositionTracking();
       return { success: true, action: 'pause' };
@@ -448,7 +473,7 @@ export class SoundCloudHandler extends SiteHandler {
    * Skip to next track (matches original timing: keyboard first + delays)
    * @returns {Promise<Record<string, unknown>>}
    */
-  async next() {
+  async next(): Promise<SiteActionResult> {
     this.log.debug('Next track command - using original timing strategy');
 
     setTimeout(() => {
@@ -462,19 +487,19 @@ export class SoundCloudHandler extends SiteHandler {
     }, 50);
 
     setTimeout(() => {
-      const nextButton = this.getElement(this.constructor.config.selectors.nextButton)
+      const nextButton = this.getElement(SoundCloudHandler.config.selectors.nextButton ?? '')
         || document.querySelector('.playControls__next');
 
-      if (nextButton && !nextButton.disabled) {
+      if (nextButton && !(nextButton as HTMLButtonElement).disabled) {
         this.log.debug('Clicking next button after delay', {
-          className: nextButton.className,
-          disabled: nextButton.disabled
+          className: (nextButton as HTMLElement).className,
+          disabled: (nextButton as HTMLButtonElement).disabled,
         });
         this.clickElement(nextButton);
       } else {
         this.log.warn('Next button not found or disabled after delay', {
           found: !!nextButton,
-          disabled: nextButton?.disabled
+          disabled: nextButton ? (nextButton as HTMLButtonElement).disabled : undefined,
         });
       }
     }, 600);
@@ -486,7 +511,7 @@ export class SoundCloudHandler extends SiteHandler {
    * Skip to previous track (matches original timing: keyboard immediate + button delay)
    * @returns {Promise<Record<string, unknown>>}
    */
-  async previous() {
+  async previous(): Promise<SiteActionResult> {
     this.log.debug('Previous track command - using original timing strategy');
 
     this.log.trace('Dispatching keyboard event: k key');
@@ -498,19 +523,19 @@ export class SoundCloudHandler extends SiteHandler {
     }));
 
     setTimeout(() => {
-      const prevButton = this.getElement(this.constructor.config.selectors.prevButton)
+      const prevButton = this.getElement(SoundCloudHandler.config.selectors.prevButton ?? '')
         || document.querySelector('.playControls__prev');
 
-      if (prevButton && !prevButton.disabled) {
+      if (prevButton && !(prevButton as HTMLButtonElement).disabled) {
         this.log.debug('Clicking prev button after delay', {
-          className: prevButton.className,
-          disabled: prevButton.disabled
+          className: (prevButton as HTMLElement).className,
+          disabled: (prevButton as HTMLButtonElement).disabled,
         });
         this.clickElement(prevButton);
       } else {
         this.log.warn('Prev button not found or disabled after delay', {
           found: !!prevButton,
-          disabled: prevButton?.disabled
+          disabled: prevButton ? (prevButton as HTMLButtonElement).disabled : undefined,
         });
       }
     }, 200);
@@ -522,7 +547,7 @@ export class SoundCloudHandler extends SiteHandler {
    * Favorites the current track by clicking the native like button.
    * @returns {Promise<{ success: boolean, action: string, error?: string }>}
    */
-  async favorite() {
+  async favorite(): Promise<SiteActionResult> {
     this.log.debug('Favorite command — clicking like button');
     const likeButton = document.querySelector('.sc-button-like');
     if (!likeButton) {
@@ -539,7 +564,7 @@ export class SoundCloudHandler extends SiteHandler {
    * @param {number} time - Target position in seconds
    * @returns {Promise<Record<string, unknown>>}
    */
-  async seek(time) {
+  async seek(time: number): Promise<SiteActionResult> {
     return this.seekController.seek(time);
   }
 
@@ -547,7 +572,7 @@ export class SoundCloudHandler extends SiteHandler {
    * Extract SoundCloud timing data (position and duration)
    * @returns {{ position: number, duration: number }}
    */
-  extractSoundCloudTiming() {
+  extractSoundCloudTiming(): { position: number; duration: number } {
     return this.mediaDetection.extractSoundCloudTiming();
   }
 
@@ -555,14 +580,14 @@ export class SoundCloudHandler extends SiteHandler {
    * Report playing state for UI/background
    * @returns {boolean}
    */
-  isPlaying() {
+  isPlaying(): boolean {
     return this.getPlayingState();
   }
 
   /**
    * Start tracking playback position (matches original 1000ms interval)
    */
-  startPositionTracking() {
+  startPositionTracking(): void {
     if (this.positionUpdateInterval) return;
 
     this.log.debug('Starting position tracking with 1000ms interval');
@@ -571,7 +596,8 @@ export class SoundCloudHandler extends SiteHandler {
       try {
         this.updatePosition();
       } catch (error) {
-        if (error.message && error.message.includes('Extension context invalidated')) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        if (err.message.includes('Extension context invalidated')) {
           this.stopPositionTracking();
         }
       }
@@ -581,7 +607,7 @@ export class SoundCloudHandler extends SiteHandler {
   /**
    * Stop tracking playback position
    */
-  stopPositionTracking() {
+  stopPositionTracking(): void {
     if (this.positionUpdateInterval) {
       clearInterval(this.positionUpdateInterval);
       this.positionUpdateInterval = null;
@@ -592,7 +618,7 @@ export class SoundCloudHandler extends SiteHandler {
   /**
    * Clean up all intervals and listeners
    */
-  cleanup() {
+  cleanup(): void {
     this.log.debug('🧹 [SOUNDCLOUD] Cleaning up handler');
 
     this.stopPositionTracking();
@@ -607,7 +633,7 @@ export class SoundCloudHandler extends SiteHandler {
   /**
    * Update current position and duration (called by interval)
    */
-  updatePosition() {
+  updatePosition(): void {
     const soundcloudTiming = this.extractSoundCloudTiming();
 
     if (soundcloudTiming.duration > 0) {
@@ -635,7 +661,7 @@ export class SoundCloudHandler extends SiteHandler {
   /**
    * Set up MediaSession monitoring for track changes and playback state
    */
-  setupMediaSessionMonitoring() {
+  setupMediaSessionMonitoring(): void {
     if (!navigator.mediaSession) {
       this.log.warn('MediaSession API not available', {
         userAgent: navigator.userAgent,
@@ -652,11 +678,11 @@ export class SoundCloudHandler extends SiteHandler {
     const checkMediaSession = () => {
       if (navigator.mediaSession.metadata) {
         const metadata = navigator.mediaSession.metadata;
-        const newTrack = {
+        const newTrack: SoundCloudTrackInfo = {
           title: metadata.title || 'Unknown',
           artist: metadata.artist || 'Unknown',
           album: metadata.album || '',
-          artwork: metadata.artwork || []
+          artwork: metadata.artwork ? [...metadata.artwork] : [],
         };
 
         if (newTrack.title !== this.currentTrack?.title) {
@@ -665,7 +691,7 @@ export class SoundCloudHandler extends SiteHandler {
           this.log.debug('MediaSession track change detected', {
             title: newTrack.title,
             artist: newTrack.artist,
-            hasArtwork: newTrack.artwork?.length > 0
+            hasArtwork: (newTrack.artwork?.length ?? 0) > 0,
           });
         }
       }
@@ -675,7 +701,8 @@ export class SoundCloudHandler extends SiteHandler {
       try {
         checkMediaSession();
       } catch (error) {
-        if (error.message && error.message.includes('Extension context invalidated')) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        if (err.message.includes('Extension context invalidated') && this.mediaSessionInterval) {
           clearInterval(this.mediaSessionInterval);
           this.mediaSessionInterval = null;
         }
@@ -689,8 +716,8 @@ export class SoundCloudHandler extends SiteHandler {
    * @param {string} raw Raw title string
    * @returns {string}
    */
-  sanitizeTitle(raw) {
-    if (!raw) return raw;
+  sanitizeTitle(raw: string | null | undefined): string {
+    if (!raw) return raw ?? '';
     const stripped = raw.replace(/^current track:\s*/i, '').trim();
     const half = Math.floor(stripped.length / 2);
     if (stripped.length > 0 && stripped.length % 2 === 0 && stripped.slice(0, half) === stripped.slice(half)) {
@@ -704,7 +731,7 @@ export class SoundCloudHandler extends SiteHandler {
    * @param {string} timeStr
    * @returns {number}
    */
-  parseTimeString(timeStr) {
+  parseTimeString(timeStr: string): number {
     try {
       if (!timeStr || typeof timeStr !== 'string') return 0;
 
@@ -732,10 +759,11 @@ export class SoundCloudHandler extends SiteHandler {
 
       return 0;
     } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
       this.log.warn('Failed to parse time string', {
         timeStr,
-        error: error.message,
-        fallback: 0
+        error: err.message,
+        fallback: 0,
       });
       return 0;
     }

@@ -5,17 +5,26 @@
  * Follows the 80/20 rule: config handles 80% of cases, custom overrides handle complex 20%.
  */
 
-import logger from '@crimsonsunset/jsg-logger';
+import jsgLogger, { type LoggerInstance, type LoggerInstanceType } from '@crimsonsunset/jsg-logger';
+import type { SiteActionResult, SiteHandlerConfig, TrackInfo } from './site-handler.types.js';
+
+const logger = jsgLogger as unknown as LoggerInstanceType;
 
 export class SiteHandler {
+  config: SiteHandlerConfig;
+  isInitialized: boolean;
+  lastKnownTrackInfo: TrackInfo | null;
+  retryCount: number;
+  maxRetries: number;
+  log: LoggerInstance;
+
   constructor() {
-    this.config = this.constructor.config;
+    this.config = (this.constructor as typeof SiteHandler).config;
     this.isInitialized = false;
     this.lastKnownTrackInfo = null;
     this.retryCount = 0;
     this.maxRetries = 3;
-    
-    // Get logger based on config name
+
     const siteName = this.config.name.toLowerCase();
     this.log = logger.getComponent(siteName);
   }
@@ -40,10 +49,10 @@ export class SiteHandler {
    *   }
    * }
    */
-  static config = {
+  static config: SiteHandlerConfig = {
     name: 'Generic',
     urlPatterns: [],
-    selectors: {}
+    selectors: {},
   };
 
   // === Core Interface Methods ===
@@ -52,20 +61,21 @@ export class SiteHandler {
    * Initialize the site handler
    * Called when the site is detected and ready
    */
-  async initialize() {
+  async initialize(): Promise<boolean> {
     try {
       await this.waitForElements();
       this.isInitialized = true;
       this.log.info('Handler initialized successfully', {
         siteName: this.config.name,
-        hasElements: true
+        hasElements: true,
       });
       return true;
     } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
       this.log.error('Handler initialization failed', {
         siteName: this.config.name,
-        error: error.message,
-        stack: error.stack
+        error: err.message,
+        stack: err.stack,
       });
       return false;
     }
@@ -75,7 +85,7 @@ export class SiteHandler {
    * Check if the site is ready for interaction
    * @returns {boolean} True if site is loaded and ready
    */
-  isReady() {
+  isReady(): boolean {
     if (!this.isInitialized) return false;
     
     // Check if essential elements exist
@@ -87,7 +97,7 @@ export class SiteHandler {
    * Check if user is logged in (if applicable)
    * @returns {boolean} True if logged in or login not required
    */
-  isLoggedIn() {
+  isLoggedIn(): boolean {
     // Default: assume no login required
     // Override in site-specific handlers if needed
     return true;
@@ -96,11 +106,10 @@ export class SiteHandler {
   /**
    * Play audio
    */
-  async play() {
+  async play(): Promise<SiteActionResult> {
     try {
       const button = this.getElement(['playButton', 'pauseButton']);
       if (button) {
-        // Check if it's actually a play button (not pause)
         const isPlayButton = this.isPlayButton(button);
         if (isPlayButton) {
           this.clickElement(button);
@@ -109,23 +118,23 @@ export class SiteHandler {
       }
       throw new Error('Play button not found or not in correct state');
     } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
       this.log.error('Play command failed', {
         siteName: this.config.name,
-        error: error.message,
-        selector: this.config.selectors?.playButton
+        error: err.message,
+        selector: this.config.selectors?.playButton,
       });
-      return { success: false, error: error.message };
+      return { success: false, error: err.message };
     }
   }
 
   /**
    * Pause audio
    */
-  async pause() {
+  async pause(): Promise<SiteActionResult> {
     try {
       const button = this.getElement(['pauseButton', 'playButton']);
       if (button) {
-        // Check if it's actually a pause button (not play)
         const isPauseButton = this.isPauseButton(button);
         if (isPauseButton) {
           this.clickElement(button);
@@ -134,54 +143,57 @@ export class SiteHandler {
       }
       throw new Error('Pause button not found or not in correct state');
     } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
       this.log.error('Pause command failed', {
         siteName: this.config.name,
-        error: error.message,
-        selector: this.config.selectors?.pauseButton
+        error: err.message,
+        selector: this.config.selectors?.pauseButton,
       });
-      return { success: false, error: error.message };
+      return { success: false, error: err.message };
     }
   }
 
   /**
    * Next track
    */
-  async next() {
+  async next(): Promise<SiteActionResult> {
     try {
       const button = this.getElement('nextButton');
-      if (button && !button.disabled) {
+      if (button && !(button as HTMLButtonElement).disabled) {
         this.clickElement(button);
         return { success: true, action: 'next' };
       }
       throw new Error('Next button not found or disabled');
     } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
       this.log.error('Next command failed', {
         siteName: this.config.name,
-        error: error.message,
-        selector: this.config.selectors?.nextButton
+        error: err.message,
+        selector: this.config.selectors?.nextButton,
       });
-      return { success: false, error: error.message };
+      return { success: false, error: err.message };
     }
   }
 
   /**
    * Previous track
    */
-  async previous() {
+  async previous(): Promise<SiteActionResult> {
     try {
       const button = this.getElement('prevButton');
-      if (button && !button.disabled) {
+      if (button && !(button as HTMLButtonElement).disabled) {
         this.clickElement(button);
         return { success: true, action: 'previous' };
       }
       throw new Error('Previous button not found or disabled');
     } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
       this.log.error('Previous command failed', {
         siteName: this.config.name,
-        error: error.message,
-        selector: this.config.selectors?.prevButton
+        error: err.message,
+        selector: this.config.selectors?.prevButton,
       });
-      return { success: false, error: error.message };
+      return { success: false, error: err.message };
     }
   }
 
@@ -189,7 +201,7 @@ export class SiteHandler {
    * Get current track information
    * @returns {Object} Track info object
    */
-  getTrackInfo() {
+  getTrackInfo(): TrackInfo {
     try {
       const title = this.getElementText('title') || 'Unknown Title';
       const artist = this.getElementText('artist') || 'Unknown Artist';
@@ -197,21 +209,22 @@ export class SiteHandler {
       const artwork = this.getArtwork();
       const isPlaying = this.isPlaying();
 
-      const trackInfo = {
+      const trackInfo: TrackInfo = {
         title,
         artist,
         album,
         artwork,
-        isPlaying
+        isPlaying,
       };
 
       this.lastKnownTrackInfo = trackInfo;
       return trackInfo;
     } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
       this.log.warn('Track info extraction failed', {
         siteName: this.config.name,
-        error: error.message,
-        fallback: 'returning last known info'
+        error: err.message,
+        fallback: 'returning last known info',
       });
       return this.lastKnownTrackInfo || this.getDefaultTrackInfo();
     }
@@ -221,7 +234,7 @@ export class SiteHandler {
    * Get current playback time
    * @returns {number} Current time in seconds
    */
-  getCurrentTime() {
+  getCurrentTime(): number {
     try {
       const timeElement = this.getElement('currentTime');
       if (timeElement) {
@@ -230,10 +243,11 @@ export class SiteHandler {
       }
       return 0;
     } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
       this.log.warn('Current time extraction failed', {
         siteName: this.config.name,
-        error: error.message,
-        fallback: 0
+        error: err.message,
+        fallback: 0,
       });
       return 0;
     }
@@ -243,7 +257,7 @@ export class SiteHandler {
    * Get total track duration
    * @returns {number} Duration in seconds
    */
-  getDuration() {
+  getDuration(): number {
     try {
       const durationElement = this.getElement('duration');
       if (durationElement) {
@@ -252,10 +266,11 @@ export class SiteHandler {
       }
       return 0;
     } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
       this.log.warn('Duration extraction failed', {
         siteName: this.config.name,
-        error: error.message,
-        fallback: 0
+        error: err.message,
+        fallback: 0,
       });
       return 0;
     }
@@ -266,7 +281,7 @@ export class SiteHandler {
    * @param {Element} progressBar - Progress bar element from config selectors
    * @returns {boolean} True when the bar is present and has measurable width
    */
-  isSeekable(progressBar) {
+  isSeekable(progressBar: Element | null): boolean {
     if (!progressBar) {
       return false;
     }
@@ -280,7 +295,7 @@ export class SiteHandler {
    * @param {Element} progressBar - Progress bar element
    * @param {number} percentage - Target position from 0 to 1
    */
-  seekToPercentage(progressBar, percentage) {
+  seekToPercentage(progressBar: Element, percentage: number): void {
     const rect = progressBar.getBoundingClientRect();
     const clamped = Math.max(0, Math.min(1, percentage));
     const x = rect.left + rect.width * clamped;
@@ -293,7 +308,7 @@ export class SiteHandler {
    * @param {number} time Time in seconds
    * @returns {boolean} Success
    */
-  async seek(time) {
+  async seek(time: number): Promise<SiteActionResult> {
     try {
       const progressBar = this.getElement('progressBar');
       if (progressBar && this.isSeekable(progressBar)) {
@@ -306,13 +321,14 @@ export class SiteHandler {
       }
       throw new Error('Seeking not available or invalid time');
     } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
       this.log.error('Seek command failed', {
         siteName: this.config.name,
-        error: error.message,
+        error: err.message,
         time,
-        selector: this.config.selectors?.progressBar
+        selector: this.config.selectors?.progressBar,
       });
-      return { success: false, error: error.message };
+      return { success: false, error: err.message };
     }
   }
 
@@ -323,9 +339,9 @@ export class SiteHandler {
    * @param {string|string[]} selectorKey Selector key(s) from config
    * @returns {Element|null} Found element or null
    */
-  getElement(selectorKey) {
+  getElement(selectorKey: string | string[]): Element | null {
     const selectorKeys = Array.isArray(selectorKey) ? selectorKey : [selectorKey];
-    
+
     for (const key of selectorKeys) {
       const selector = this.config.selectors[key];
       if (selector) {
@@ -341,30 +357,31 @@ export class SiteHandler {
    * @param {string} selectorKey Selector key from config
    * @returns {string} Element text content
    */
-  getElementText(selectorKey) {
+  getElementText(selectorKey: string): string {
     const element = this.getElement(selectorKey);
-    return element ? (element.textContent || element.innerText || '').trim() : '';
+    if (!element) return '';
+    const htmlElement = element as HTMLElement;
+    return (element.textContent || htmlElement.innerText || '').trim();
   }
 
   /**
    * Get artwork URLs
    * @returns {string[]} Array of artwork URLs
    */
-  getArtwork() {
+  getArtwork(): string[] {
     const artworkElement = this.getElement('artwork');
     if (!artworkElement) return [];
 
-    const artworkUrls = [];
-    
-    // Check for background-image style
-    const bgImage = artworkElement.style.backgroundImage;
+    const artworkUrls: string[] = [];
+    const htmlElement = artworkElement as HTMLElement;
+
+    const bgImage = htmlElement.style.backgroundImage;
     if (bgImage) {
       const match = bgImage.match(/url\("?([^"]*)"?\)/);
-      if (match) artworkUrls.push(match[1]);
+      if (match?.[1]) artworkUrls.push(match[1]);
     }
 
-    // Check for src attribute
-    const src = artworkElement.src || artworkElement.getAttribute('src');
+    const src = (artworkElement as HTMLImageElement).src || artworkElement.getAttribute('src');
     if (src) artworkUrls.push(src);
 
     return artworkUrls;
@@ -374,7 +391,7 @@ export class SiteHandler {
    * Determine if audio is currently playing
    * @returns {boolean} True if playing
    */
-  getPlayingState() {
+  getPlayingState(): boolean {
     const playButton = this.getElement(['playButton', 'pauseButton']);
     if (playButton) {
       return !this.isPlayButton(playButton);
@@ -383,15 +400,35 @@ export class SiteHandler {
   }
 
   /**
+   * Alias used by getTrackInfo and external callers.
+   */
+  isPlaying(): boolean {
+    return this.getPlayingState();
+  }
+
+  /**
+   * Fallback track info when extraction fails and no prior state exists.
+   */
+  getDefaultTrackInfo(): TrackInfo {
+    return {
+      title: 'Unknown Title',
+      artist: 'Unknown Artist',
+      album: '',
+      artwork: [],
+      isPlaying: false,
+    };
+  }
+
+  /**
    * Check if button is in "play" state (shows play icon)
    * @param {Element} button Button element
    * @returns {boolean} True if button will start playback
    */
-  isPlayButton(button) {
-    // Check common patterns for play vs pause states
+  isPlayButton(button: Element): boolean {
+    const htmlButton = button as HTMLElement;
     const buttonText = button.textContent || '';
     const ariaLabel = button.getAttribute('aria-label') || '';
-    const className = button.className || '';
+    const className = htmlButton.className || '';
     
     // Common play indicators
     const playIndicators = ['play', 'start', '▶', '►'];
@@ -411,12 +448,19 @@ export class SiteHandler {
   }
 
   /**
-   * Safely click an element
-   * @param {Element} element Element to click
+   * Check if button is in "pause" state (shows pause icon)
    */
-  clickElement(element) {
-    if (element && typeof element.click === 'function') {
-      element.click();
+  isPauseButton(button: Element): boolean {
+    return !this.isPlayButton(button);
+  }
+
+  /**
+   * Safely click an element
+   */
+  clickElement(element: Element | null): void {
+    const clickable = element as HTMLElement | null;
+    if (clickable && typeof clickable.click === 'function') {
+      clickable.click();
     }
   }
 
@@ -426,7 +470,7 @@ export class SiteHandler {
    * @param {number} x X coordinate
    * @param {number} y Y coordinate
    */
-  clickAtPosition(element, x, y) {
+  clickAtPosition(element: Element, x: number, y: number): void {
     const event = new MouseEvent('click', {
       view: window,
       bubbles: true,
@@ -442,7 +486,7 @@ export class SiteHandler {
    * @param {string} timeString Time in format like "1:23" or "12:34"
    * @returns {number} Time in seconds
    */
-  parseTimeString(timeString) {
+  parseTimeString(timeString: string): number {
     if (!timeString) return 0;
     
     const cleanTime = timeString.replace(/[^\d:]/g, '');
@@ -461,7 +505,7 @@ export class SiteHandler {
    * Wait for essential elements to load
    * @param {number} timeout Timeout in milliseconds
    */
-  async waitForElements(timeout = 5000) {
+  async waitForElements(timeout = 5000): Promise<boolean> {
     const startTime = Date.now();
     
     while (Date.now() - startTime < timeout) {
@@ -479,17 +523,19 @@ export class SiteHandler {
    * Sleep utility
    * @param {number} ms Milliseconds to sleep
    */
-  sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+  sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+      setTimeout(resolve, ms);
+    });
   }
 
   /**
    * Check if current URL matches this handler's patterns
    * @returns {boolean} True if URL matches
    */
-  static matchesURL(url) {
+  static matchesURL(url: string): boolean {
     const patterns = this.config.urlPatterns || [];
-    return patterns.some(pattern => url.includes(pattern));
+    return patterns.some((pattern) => url.includes(pattern));
   }
 }
 
