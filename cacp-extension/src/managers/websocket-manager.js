@@ -158,6 +158,9 @@ export class BridgeManager {
                 commandResult = { success: false, error: 'msg.time missing or not a number' };
               }
               break;
+            case 'favorite':
+              commandResult = await this.sendControlCommand('favorite');
+              break;
             default:
               backgroundLogger.debug('Unknown bridge command', { action });
               return;

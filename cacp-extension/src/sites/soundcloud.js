@@ -650,6 +650,22 @@ export class SoundCloudHandler extends SiteHandler {
   }
 
   /**
+   * Favorites the current track by clicking the native like button.
+   * @returns {Promise<{ success: boolean, action: string, error?: string }>}
+   */
+  async favorite() {
+    this.log.debug('Favorite command — clicking like button');
+    const likeButton = document.querySelector('.sc-button-like');
+    if (!likeButton) {
+      this.log.warn('Like button not found', { selector: '.sc-button-like' });
+      return { success: false, error: 'Like button not found', action: 'favorite' };
+    }
+
+    this.clickElement(likeButton);
+    return { success: true, action: 'favorite' };
+  }
+
+  /**
    * Finds the progress bar wrapper used for click-to-seek.
    * @returns {Element | null} Clickable progress bar container
    */

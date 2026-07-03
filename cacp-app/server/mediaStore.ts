@@ -191,6 +191,11 @@ export class CACPMediaStore {
     this.sendCommandToExtension('pause', {}, 'Pause requested');
   }
 
+  /** Favorites the current standalone track via the extension. */
+  public handleFavoriteStandalone() {
+    this.sendCommandToExtension('favorite', {}, 'Favorite requested');
+  }
+
   /** Seeks playback to the given position via the extension. */
   public handleSeek(data: { positionMs: number }) {
     if (data.positionMs == null || Number.isNaN(data.positionMs)) {

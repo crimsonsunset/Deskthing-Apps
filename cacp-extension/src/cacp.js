@@ -688,6 +688,13 @@ class CACPMediaSource {
                     const isPlaying = this.currentHandler.isPlaying ? this.currentHandler.isPlaying() : false;
                     result = isPlaying ? await this.currentHandler.pause() : await this.currentHandler.play();
                     break;
+                case 'favorite':
+                    if (this.currentHandler.favorite) {
+                        result = await this.currentHandler.favorite();
+                    } else {
+                        return { success: false, error: 'Favorite not supported on this site' };
+                    }
+                    break;
                 default:
                     return {success: false, error: `Unknown command: ${command}`};
             }

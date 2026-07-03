@@ -2,6 +2,7 @@ import { DeskThing } from "@deskthing/server";
 import { AUDIO_REQUESTS, SongEvent } from "@deskthing/types";
 import { CACPMediaStore } from "./mediaStore";
 import { sendDeskThingWarning } from "./deskthing-log.helpers.js";
+import { registerFavoriteHandlers } from "./favorite.handlers.js";
 import { registerTracklistHandlers } from "./tracklist/tracklist.handlers.js";
 import { initializeCacpSettings } from "./initSettings.js";
 
@@ -15,6 +16,7 @@ export const initializeListeners = async () => {
   CACPMediaStore.getInstance();
   await initializeCacpSettings();
   registerTracklistHandlers();
+  registerFavoriteHandlers();
   console.log('✅ [CACP-Initializer] MediaStore instance ready');
 };
 
