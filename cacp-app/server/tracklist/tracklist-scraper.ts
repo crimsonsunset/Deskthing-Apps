@@ -25,6 +25,7 @@ type ParsedTracklistDom = {
     artist: string;
     title: string;
     artworkUrl?: string;
+    rowId: string;
   }[];
 };
 
@@ -81,6 +82,7 @@ export function parseTracklistDom(document: Document): ParsedTracklistDom {
       artist,
       title,
       artworkUrl: isPlaceholderArt ? undefined : artRaw,
+      rowId: row.id,
     };
   });
 

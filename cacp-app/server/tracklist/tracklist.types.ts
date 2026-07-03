@@ -18,6 +18,7 @@ export const TracklistTrackSchema = z.object({
   title: z.string(),
   artworkUrl: z.string().url().optional(),
   processedArtwork: z.string().optional(),
+  rowId: z.string(),
 });
 
 export const TracklistResultSchema = z.object({
