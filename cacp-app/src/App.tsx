@@ -4,6 +4,7 @@ import {
   SongAbilities,
 } from '@deskthing/types';
 import { useCacpMusic } from './hooks/use-cacp-music.hook';
+import { useCacpFavorite } from './hooks/use-cacp-favorite.hook';
 import {
   findCurrentTracklistTrack,
   formatCueSeconds,
@@ -13,6 +14,10 @@ import {
   type TracklistState,
   resolveMixLookupIdentity,
 } from './hooks/use-cacp-tracklist.hook';
+
+type TracklistRowWithRowId = TracklistResultView['tracks'][number] & {
+  rowId?: string;
+};
 
 const DEV_LOOKUP_ARTIST = 'Nora En Pure';
 const DEV_LOOKUP_TITLE = 'Purified #512';
@@ -63,6 +68,8 @@ function TracklistPanel({
   onDevLookup,
   onLookupCurrent,
   onSeekToTrack,
+  onFavoriteTrack,
+  favoriteStatus,
   currentArtist,
   currentTitle,
 }: {
@@ -79,6 +86,8 @@ function TracklistPanel({
     artist: string;
     title: string;
   }) => void;
+  onFavoriteTrack?: (rowId: string) => void;
+  favoriteStatus?: 'idle' | 'loading' | 'ready' | 'error';
   currentArtist?: string | null;
   currentTitle?: string | null;
 }) {
@@ -126,8 +135,10 @@ function TracklistPanel({
           ) : null}
           <ol className="cacp-tracklist-rows">
             {result.tracks.map((track, index) => {
+              const row = track as TracklistRowWithRowId;
               const isActive = currentTrack?.order === track.order;
               const canSeek = onSeekToTrack && track.cueSeconds != null;
+              const canFavorite = Boolean(onFavoriteTrack && row.rowId);
               const durationSeconds = getTrackDurationSeconds(
                 result.tracks,
                 index,
@@ -165,6 +176,21 @@ function TracklistPanel({
                       {durationSeconds != null ? formatCueSeconds(durationSeconds) : ''}
                     </span>
                   </button>
+                  <button
+                    type="button"
+                    className="cacp-tracklist-favorite-button"
+                    aria-label={`Favorite ${track.artist ? `${track.artist} — ` : ''}${track.title}`}
+                    disabled={!canFavorite || favoriteStatus === 'loading'}
+                    onClick={() => {
+                      if (!row.rowId) {
+                        return;
+                      }
+
+                      onFavoriteTrack?.(row.rowId);
+                    }}
+                  >
+                    ♥
+                  </button>
                 </li>
               );
             })}
@@ -187,6 +213,10 @@ export default function App() {
     useCacpMusic();
   const { status, result, error, lookupTracklist } = useCacpTracklist();
   const [hoverRatio, setHoverRatio] = useState<number | null>(null);
+
+  const isInMix = Boolean(resolveMixLookupIdentity(song?.artist, song?.track_name));
+  const { status: favoriteStatus, error: favoriteError, favoriteCurrent, favoriteTrack } =
+    useCacpFavorite(song?.track_progress, result, isInMix);
 
   const handleDevLookup = () => {
     lookupTracklist(DEV_LOOKUP_ARTIST, DEV_LOOKUP_TITLE);
@@ -244,6 +274,8 @@ export default function App() {
       onDevLookup={handleDevLookup}
       onLookupCurrent={song ? handleLookupCurrent : undefined}
       onSeekToTrack={song ? handleSeekToTrack : undefined}
+      onFavoriteTrack={result ? favoriteTrack : undefined}
+      favoriteStatus={favoriteStatus}
       currentArtist={song?.artist}
       currentTitle={song?.track_name}
     />
@@ -336,11 +368,25 @@ export default function App() {
               {song.source}
               {song.device ? ` · ${song.device}` : ''}
             </p>
-            <span
-              className={`cacp-playing-badge${isPlaying ? '' : ' is-paused'}`}
-            >
-              {isPlaying ? 'Playing' : 'Paused'}
-            </span>
+            <div className="cacp-meta-actions">
+              <button
+                type="button"
+                className="cacp-favorite-button"
+                aria-label="Favorite current track on SoundCloud"
+                disabled={favoriteStatus === 'loading'}
+                onClick={favoriteCurrent}
+              >
+                ♥ Favorite
+              </button>
+              <span
+                className={`cacp-playing-badge${isPlaying ? '' : ' is-paused'}`}
+              >
+                {isPlaying ? 'Playing' : 'Paused'}
+              </span>
+            </div>
+            {favoriteError ? (
+              <p className="cacp-favorite-error">{favoriteError}</p>
+            ) : null}
           </div>
         </section>
 
