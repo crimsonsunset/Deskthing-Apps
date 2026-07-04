@@ -1,4 +1,4 @@
-import { SiteHandler } from './base-handler.js';
+import { SiteHandler } from '@sites/base-handler.js';
 
 export class YourSiteHandler extends SiteHandler {
   static config = {

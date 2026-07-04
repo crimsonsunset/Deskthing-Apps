@@ -2,10 +2,10 @@
  * Window globals exposed by CACP content and main-world scripts.
  */
 
-import type { SiteDetector } from '../managers/site-detector.js';
-import type { SiteHandler } from '../sites/base-handler.js';
-import type { SiteActionResult } from '../sites/site-handler.types.js';
-import type { MediaControlCommand } from './global-state.types.js';
+import type { SiteDetector } from '@managers/site-detector.js';
+import type { SiteHandler } from '@sites/base-handler.js';
+import type { SiteActionResult } from '@sites/site-handler.types.js';
+import type { MediaControlCommand } from '@/types/global-state.types.js';
 
 export interface CacpStatus {
   isInitialized: boolean;

@@ -1,13 +1,13 @@
-import { DebugLogPanel } from '../components/debug-log-panel.component.js';
-import { GlobalControls } from '../components/global-controls.component.js';
-import { PopupHeader } from '../components/popup-header.component.js';
-import { SourcesList } from '../components/sources-list.component.js';
-import { SystemStatus } from '../components/system-status.component.js';
-import { TracklistShell } from '../components/tracklist-shell.component.js';
-import { usePopupCommands } from '../hooks/use-popup-commands.hook.js';
-import { usePopupDebugLog } from '../hooks/use-popup-debug-log.hook.js';
-import { usePopupGlobalState } from '../hooks/use-popup-global-state.hook.js';
-import styles from './app.module.css';
+import { DebugLogPanel } from '@components/debug-log-panel.component.js';
+import { GlobalControls } from '@components/global-controls.component.js';
+import { PopupHeader } from '@components/popup-header.component.js';
+import { SourcesList } from '@components/sources-list.component.js';
+import { SystemStatus } from '@components/system-status.component.js';
+import { TracklistShell } from '@components/tracklist-shell.component.js';
+import { usePopupCommands } from '@hooks/use-popup-commands.hook.js';
+import { usePopupDebugLog } from '@hooks/use-popup-debug-log.hook.js';
+import { usePopupGlobalState } from '@hooks/use-popup-global-state.hook.js';
+import styles from '@/popup/app.module.css';
 
 /**
  * Popup root — composes header, status, controls, sources, tracklist, and debug.

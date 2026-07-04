@@ -5,7 +5,7 @@ import type {
   GlobalState,
   MediaSource,
   SourceListItem,
-} from './global-state.types.js';
+} from '@/types/global-state.types.js';
 
 export type { EnrichedDisplay, GlobalState, MediaSource, SourceListItem };
 

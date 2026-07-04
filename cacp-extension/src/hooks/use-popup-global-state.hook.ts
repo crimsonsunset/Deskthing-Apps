@@ -7,9 +7,9 @@ import type {
   MediaSource,
   NowPlayingDisplay,
   SourceListItem,
-} from '../types/popup-global-state.types.js';
-import type { PopupLogFn } from './use-popup-debug-log.hook.js';
-import { EXTENSION_VERSION } from './use-popup-debug-log.hook.js';
+} from '@/types/popup-global-state.types.js';
+import type { PopupLogFn } from '@hooks/use-popup-debug-log.hook.js';
+import { EXTENSION_VERSION } from '@hooks/use-popup-debug-log.hook.js';
 
 const logger = jsgLogger as unknown as LoggerInstanceType;
 const popupLogger: LoggerInstance = logger.getComponent('popup');

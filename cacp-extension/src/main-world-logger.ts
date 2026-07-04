@@ -4,7 +4,7 @@
  * to expose logger controls to the browser console window object.
  */
 
-import type { CacpLoggerControls } from './types/window-globals.types.js';
+import type { CacpLoggerControls } from '@/types/window-globals.types.js';
 
 console.log('🌍 CACP Main World Script Loading...');
 

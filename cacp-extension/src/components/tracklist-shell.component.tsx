@@ -2,10 +2,10 @@ import { TracklistPanel } from 'cacp-ui';
 
 import {
   canLookupSource,
-} from '../hooks/use-popup-global-state.hook.js';
-import type { usePopupCommands } from '../hooks/use-popup-commands.hook.js';
-import type { GlobalState, MediaSource } from '../types/popup-global-state.types.js';
-import styles from './tracklist-shell.module.css';
+} from '@hooks/use-popup-global-state.hook.js';
+import type { usePopupCommands } from '@hooks/use-popup-commands.hook.js';
+import type { GlobalState, MediaSource } from '@/types/popup-global-state.types.js';
+import styles from '@components/tracklist-shell.module.css';
 
 type PopupCommands = ReturnType<typeof usePopupCommands>;
 

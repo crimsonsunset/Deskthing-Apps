@@ -3,7 +3,7 @@
  */
 
 import type { LoggerInstanceType } from '@crimsonsunset/jsg-logger';
-import type { CacpLoggerControls } from './types/window-globals.types.js';
+import type { CacpLoggerControls } from '@/types/window-globals.types.js';
 
 interface LoggerCommandMessage {
   type: 'CACP_LOGGER_COMMAND';

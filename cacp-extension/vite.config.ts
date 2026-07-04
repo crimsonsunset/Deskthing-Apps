@@ -4,10 +4,16 @@ import { crx } from '@crxjs/vite-plugin'
 import { resolve } from 'path'
 import manifest from './manifest.json' with { type: 'json' }
 
+const srcDir = resolve(import.meta.dirname, 'src')
+
 export default defineConfig({
   resolve: {
     alias: {
-      '@': resolve(import.meta.dirname, 'src'),
+      '@': srcDir,
+      '@components': resolve(srcDir, 'components'),
+      '@hooks': resolve(srcDir, 'hooks'),
+      '@managers': resolve(srcDir, 'managers'),
+      '@sites': resolve(srcDir, 'sites'),
       'cacp-ui': resolve(import.meta.dirname, '../cacp-ui'),
     },
   },

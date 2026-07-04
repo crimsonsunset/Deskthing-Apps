@@ -5,10 +5,10 @@
  */
 
 import jsgLogger, { type LoggerInstance, type LoggerInstanceType } from '@crimsonsunset/jsg-logger';
-import { GlobalMediaManager } from './managers/global-media-manager.js';
-import { BridgeManager } from './managers/websocket-manager.js';
-import type { BackgroundInboundMessage, BackgroundResponse } from './types/extension-messages.types.js';
-import type { FavoriteStatus, TracklistResult, TracklistStatus } from './types/global-state.types.js';
+import { GlobalMediaManager } from '@managers/global-media-manager.js';
+import { BridgeManager } from '@managers/websocket-manager.js';
+import type { BackgroundInboundMessage, BackgroundResponse } from '@/types/extension-messages.types.js';
+import type { FavoriteStatus, TracklistResult, TracklistStatus } from '@/types/global-state.types.js';
 
 const logger = jsgLogger as unknown as LoggerInstanceType;
 

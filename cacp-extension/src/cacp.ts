@@ -4,19 +4,19 @@
  */
 
 import jsgLogger, { type LoggerInstance, type LoggerInstanceType } from '@crimsonsunset/jsg-logger';
-import { installLoggerBridge } from './logger-bridge.js';
-import { SiteDetector } from './managers/site-detector.js';
-import { SiteActivationController } from './site-activation-controller.js';
-import { StateReportingController } from './state-reporting-controller.js';
-import type { SiteHandler } from './sites/base-handler.js';
-import type { SoundCloudTiming } from './sites/site-handler.types.js';
-import type { MediaControlTabMessage } from './types/extension-messages.types.js';
+import { installLoggerBridge } from '@/logger-bridge.js';
+import { SiteDetector } from '@managers/site-detector.js';
+import { SiteActivationController } from '@/site-activation-controller.js';
+import { StateReportingController } from '@/state-reporting-controller.js';
+import type { SiteHandler } from '@sites/base-handler.js';
+import type { SoundCloudTiming } from '@sites/site-handler.types.js';
+import type { MediaControlTabMessage } from '@/types/extension-messages.types.js';
 import type {
   CacpStatus,
   ContentControlCommand,
   ControlCommandResponse,
-} from './types/window-globals.types.js';
-import './types/window-globals.types.js';
+} from '@/types/window-globals.types.js';
+import '@/types/window-globals.types.js';
 
 const logger = jsgLogger as unknown as LoggerInstanceType;
 

@@ -3,14 +3,14 @@ import { ProgressBar } from 'cacp-ui';
 import {
   canLikeSource,
   resolveNowPlayingDisplay,
-} from '../hooks/use-popup-global-state.hook.js';
-import type { usePopupCommands } from '../hooks/use-popup-commands.hook.js';
+} from '@hooks/use-popup-global-state.hook.js';
+import type { usePopupCommands } from '@hooks/use-popup-commands.hook.js';
 import type {
   EnrichedDisplay,
   GlobalState,
   SourceListItem,
-} from '../types/popup-global-state.types.js';
-import styles from './source-item.module.css';
+} from '@/types/popup-global-state.types.js';
+import styles from '@components/source-item.module.css';
 
 type PopupCommands = ReturnType<typeof usePopupCommands>;
 

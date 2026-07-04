@@ -7,7 +7,7 @@ import type {
   MediaControlCommand,
   MediaSourceData,
   GlobalState,
-} from './global-state.types.js';
+} from '@/types/global-state.types.js';
 
 export interface MessageSuccessResponse {
   success: boolean;

@@ -7,8 +7,8 @@ import type {
   SeekControllerHost,
   SiteActionResult,
   SoundCloudTiming,
-} from '../site-handler.types.js';
-import type { MediaElementRegistry } from './media-element-registry.js';
+} from '@sites/site-handler.types.js';
+import type { MediaElementRegistry } from '@sites/soundcloud/media-element-registry.js';
 
 /**
  * Computes the click target for a progress-bar seek, in pixels and ratio.

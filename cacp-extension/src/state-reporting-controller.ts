@@ -3,8 +3,8 @@
  */
 
 import type { LoggerInstance } from '@crimsonsunset/jsg-logger';
-import type { SiteHandler } from './sites/base-handler.js';
-import type { TrackInfo } from './types/global-state.types.js';
+import type { SiteHandler } from '@sites/base-handler.js';
+import type { TrackInfo } from '@/types/global-state.types.js';
 
 export interface ReportedMediaState {
   isActive: boolean;

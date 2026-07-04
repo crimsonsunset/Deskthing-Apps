@@ -3,9 +3,9 @@ import { ProgressBar } from 'cacp-ui';
 import {
   formatPopupTime,
   resolveNowPlayingDisplay,
-} from '../hooks/use-popup-global-state.hook.js';
-import type { GlobalState } from '../types/popup-global-state.types.js';
-import styles from './system-status.module.css';
+} from '@hooks/use-popup-global-state.hook.js';
+import type { GlobalState } from '@/types/popup-global-state.types.js';
+import styles from '@components/system-status.module.css';
 
 export type SystemStatusProps = {
   globalState: GlobalState | null;

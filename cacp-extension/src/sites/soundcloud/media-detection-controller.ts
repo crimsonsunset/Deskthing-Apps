@@ -1,6 +1,6 @@
 import type { LoggerInstance } from '@crimsonsunset/jsg-logger';
-import type { MediaDetectionHost, SoundCloudTiming } from '../site-handler.types.js';
-import type { MediaElementRegistry } from './media-element-registry.js';
+import type { MediaDetectionHost, SoundCloudTiming } from '@sites/site-handler.types.js';
+import type { MediaElementRegistry } from '@sites/soundcloud/media-element-registry.js';
 
 /* eslint-disable @typescript-eslint/no-this-alias -- MediaSource/fetch/src hooks capture controller context */
 

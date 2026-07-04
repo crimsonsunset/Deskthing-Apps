@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "baseUrl": ".",
     "target": "ES2020",
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "module": "ESNext",
@@ -20,7 +21,11 @@
     "esModuleInterop": true,
     "types": ["chrome"],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@components/*": ["./src/components/*"],
+      "@hooks/*": ["./src/hooks/*"],
+      "@managers/*": ["./src/managers/*"],
+      "@sites/*": ["./src/sites/*"]
     }
   },
   "include": ["src/**/*", "vite.config.ts", "css-modules.d.ts"],

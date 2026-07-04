@@ -1,8 +1,8 @@
 import type { LoggerInstance } from '@crimsonsunset/jsg-logger';
-import type { SiteDetector } from './managers/site-detector.js';
-import { SoundCloudHandler } from './sites/soundcloud.js';
-import type { SiteHandler } from './sites/base-handler.js';
-import { YouTubeHandler } from './sites/youtube.js';
+import type { SiteDetector } from '@managers/site-detector.js';
+import { SoundCloudHandler } from '@sites/soundcloud.js';
+import type { SiteHandler } from '@sites/base-handler.js';
+import { YouTubeHandler } from '@sites/youtube.js';
 
 interface SiteDetectorWithLegacyHandlers extends SiteDetector {
   siteHandlers?: Record<string, unknown>;

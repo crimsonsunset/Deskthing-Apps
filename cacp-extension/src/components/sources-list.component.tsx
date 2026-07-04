@@ -1,8 +1,8 @@
-import type { usePopupCommands } from '../hooks/use-popup-commands.hook.js';
-import type { GlobalState, SourceListItem } from '../types/popup-global-state.types.js';
-import { NoSourcesEmpty } from './no-sources-empty.component.js';
-import { SourceItem } from './source-item.component.js';
-import styles from './sources-list.module.css';
+import type { usePopupCommands } from '@hooks/use-popup-commands.hook.js';
+import type { GlobalState, SourceListItem } from '@/types/popup-global-state.types.js';
+import { NoSourcesEmpty } from '@components/no-sources-empty.component.js';
+import { SourceItem } from '@components/source-item.component.js';
+import styles from '@components/sources-list.module.css';
 
 type PopupCommands = ReturnType<typeof usePopupCommands>;
 

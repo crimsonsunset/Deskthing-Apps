@@ -1,4 +1,4 @@
-import type { TrackInfo } from '../types/global-state.types.js';
+import type { TrackInfo } from '@/types/global-state.types.js';
 
 /** CSS selector map for config-driven DOM lookups. */
 export interface SiteHandlerSelectors {

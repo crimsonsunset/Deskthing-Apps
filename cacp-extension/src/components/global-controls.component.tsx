@@ -1,7 +1,7 @@
-import { canLikeSource } from '../hooks/use-popup-global-state.hook.js';
-import type { GlobalState, MediaSource } from '../types/popup-global-state.types.js';
-import type { usePopupCommands } from '../hooks/use-popup-commands.hook.js';
-import styles from './global-controls.module.css';
+import { canLikeSource } from '@hooks/use-popup-global-state.hook.js';
+import type { GlobalState, MediaSource } from '@/types/popup-global-state.types.js';
+import type { usePopupCommands } from '@hooks/use-popup-commands.hook.js';
+import styles from '@components/global-controls.module.css';
 
 type PopupCommands = ReturnType<typeof usePopupCommands>;
 

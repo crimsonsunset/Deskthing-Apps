@@ -1,4 +1,4 @@
-import styles from './popup-header.module.css';
+import styles from '@components/popup-header.module.css';
 
 export type PopupHeaderProps = {
   version: string;

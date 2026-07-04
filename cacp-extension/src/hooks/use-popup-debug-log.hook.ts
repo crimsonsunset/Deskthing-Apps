@@ -1,7 +1,7 @@
 import jsgLogger, { type LoggerInstance, type LoggerInstanceType } from '@crimsonsunset/jsg-logger';
 import { useCallback, useMemo, useState } from 'react';
 
-import type { PopupLogLevel } from '../types/popup-global-state.types.js';
+import type { PopupLogLevel } from '@/types/popup-global-state.types.js';
 
 const MAX_LOGS = 100;
 const DISPLAY_LOG_COUNT = 20;

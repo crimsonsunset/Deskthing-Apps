@@ -6,7 +6,7 @@
  */
 
 import jsgLogger, { type LoggerInstance, type LoggerInstanceType } from '@crimsonsunset/jsg-logger';
-import type { SiteActionResult, SiteHandlerConfig, TrackInfo } from './site-handler.types.js';
+import type { SiteActionResult, SiteHandlerConfig, TrackInfo } from '@sites/site-handler.types.js';
 
 const logger = jsgLogger as unknown as LoggerInstanceType;
 

@@ -1,9 +1,9 @@
-import { SiteHandler } from './base-handler.js';
+import { SiteHandler } from '@sites/base-handler.js';
 import jsgLogger, { type LoggerInstanceType } from '@crimsonsunset/jsg-logger';
-import type { SiteActionResult, SiteHandlerConfig, SiteHandlerSelectors, TrackInfo } from './site-handler.types.js';
-import { MediaElementRegistry } from './soundcloud/media-element-registry.js';
-import { SeekController } from './soundcloud/seek-controller.js';
-import { MediaDetectionController } from './soundcloud/media-detection-controller.js';
+import type { SiteActionResult, SiteHandlerConfig, SiteHandlerSelectors, TrackInfo } from '@sites/site-handler.types.js';
+import { MediaElementRegistry } from '@sites/soundcloud/media-element-registry.js';
+import { SeekController } from '@sites/soundcloud/seek-controller.js';
+import { MediaDetectionController } from '@sites/soundcloud/media-detection-controller.js';
 
 const logger = jsgLogger as unknown as LoggerInstanceType;
 

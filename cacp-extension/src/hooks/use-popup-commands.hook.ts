@@ -1,12 +1,12 @@
 import { useCallback } from 'react';
 
-import type { MessageSuccessResponse } from '../types/extension-messages.types.js';
+import type { MessageSuccessResponse } from '@/types/extension-messages.types.js';
 import type {
   ControlCommandResult,
   MediaControlCommand,
-} from '../types/global-state.types.js';
-import type { PopupLogFn } from './use-popup-debug-log.hook.js';
-import { formatPopupTime } from './use-popup-global-state.hook.js';
+} from '@/types/global-state.types.js';
+import type { PopupLogFn } from '@hooks/use-popup-debug-log.hook.js';
+import { formatPopupTime } from '@hooks/use-popup-global-state.hook.js';
 
 export type UsePopupCommandsOptions = {
   log: PopupLogFn;

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import styles from './debug-log-panel.module.css';
+import styles from '@components/debug-log-panel.module.css';
 
 export type DebugLogPanelProps = {
   logs: string[];

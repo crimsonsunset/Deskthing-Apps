@@ -1,4 +1,4 @@
-import styles from './no-sources-empty.module.css';
+import styles from '@components/no-sources-empty.module.css';
 
 /**
  * Empty state when no media tabs are detected.

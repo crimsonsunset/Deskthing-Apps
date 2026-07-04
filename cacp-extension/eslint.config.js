@@ -14,5 +14,19 @@ export default tseslint.config(
         chrome: 'readonly',
       },
     },
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: ['./*', '../*', '../../*', '../../../*'],
+        },
+      ],
+    },
+  },
+  {
+    files: ['vite.config.ts'],
+    rules: {
+      'no-restricted-imports': 'off',
+    },
   },
 )

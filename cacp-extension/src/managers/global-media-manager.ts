@@ -16,7 +16,7 @@ import type {
   PriorityChangePayload,
   SourceListItem,
   TracklistState,
-} from '../types/global-state.types.js';
+} from '@/types/global-state.types.js';
 
 const logger = jsgLogger as unknown as LoggerInstanceType;
 const backgroundLogger: LoggerInstance = logger.getComponent('background');
