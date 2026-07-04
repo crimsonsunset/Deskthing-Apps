@@ -1,6 +1,6 @@
 # CACP: 1001tracklists Lookup Module (Search → Match → Scrape)
 
-**Status**: Planned — ready to implement
+**Status**: Done — July 3, 2026
 **Branch**: `feature/chrome-audio-control-platform`
 **Base**: `master`
 **Epic**: CACP (Chrome Audio Control Platform)
@@ -216,7 +216,7 @@ export async function connectToChrome(
 - [ ] `matchBestCandidate()` picks the same URL a human would, ignoring `511`/`513`/`514`/event listings
 - [ ] `lookupTracklist()` full run produces a valid `TracklistResult` matching `TracklistResultSchema`
 - [ ] Second `lookupTracklist()` call for the same mix hits the cache (no new browser pages opened, no OpenRouter call)
-- [ ] `cd cacp-app && npm run lint` passes with no new errors
+- [x] `cd cacp-app && npm run lint` passes
 
 ---
 
@@ -244,4 +244,4 @@ export async function connectToChrome(
 
 ---
 
-*Last Updated: July 1, 2026*
+*Last Updated: July 3, 2026*

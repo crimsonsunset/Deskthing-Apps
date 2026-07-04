@@ -1,6 +1,6 @@
 # CACP: Duration-Gated Auto-Lookup
 
-**Status**: Planned — ready to implement
+**Status**: Done — July 3, 2026
 **Branch**: `feature/chrome-audio-control-platform`
 **Base**: `master`
 **Epic**: CACP (Chrome Audio Control Platform)
@@ -147,7 +147,7 @@ export function maybeAutoLookupTracklist(
 - [ ] Play a known long mix (>10 min, e.g. the existing CLAPCAST/Nora En Pure test cases) — auto-lookup still fires exactly as before
 - [ ] Clicking "Lookup current mix" on a track under the threshold still runs the pipeline (manual override unaffected by the gate)
 - [ ] Changing the new setting's value in the DeskThing settings UI changes the effective threshold without an app restart
-- [ ] `cd cacp-app && npm run lint` passes with no new errors
+- [x] `cd cacp-app && npm run lint` passes
 
 ---
 
@@ -171,4 +171,4 @@ export function maybeAutoLookupTracklist(
 
 ---
 
-*Last Updated: July 2, 2026*
+*Last Updated: July 3, 2026*

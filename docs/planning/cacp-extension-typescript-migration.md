@@ -1,6 +1,6 @@
 # CACP: Extension TypeScript Migration
 
-**Status**: Planned — ready to implement
+**Status**: Done — July 3, 2026
 **Branch**: `feature/chrome-audio-control-platform`
 **Base**: `master`
 **Epic**: CACP (Chrome Audio Control Platform)
@@ -192,12 +192,12 @@ cacp-extension/
 
 ## Verification checklist
 
-- [ ] `cd cacp-extension && npm run typecheck` passes
-- [ ] `cd cacp-extension && npm run lint` passes
-- [ ] `cd cacp-extension && npm test` passes (seek-controller tests)
-- [ ] `cd cacp-extension && npm run build` produces valid crx bundle
-- [ ] Manual: SoundCloud tab — play/pause/seek/next/prev, extension popup still works (popup still `.js`)
-- [ ] `grep -r "popup.js" cacp-extension` — still the popup entry (unchanged until React rewrite)
+- [x] `cd cacp-extension && npm run typecheck` passes
+- [x] `cd cacp-extension && npm run lint` passes
+- [x] `cd cacp-extension && npm test` passes (seek-controller tests)
+- [x] `cd cacp-extension && npm run build` produces valid crx bundle
+- [ ] Manual: SoundCloud tab — play/pause/seek/next/prev, extension popup still works
+- [x] Zero `.js` under `src/` except `seek-controller.test.js` — popup deleted by React rewrite
 
 ---
 

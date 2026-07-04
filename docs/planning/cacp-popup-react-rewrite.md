@@ -1,6 +1,6 @@
 # CACP: Popup React Rewrite + Extension TypeScript Migration
 
-**Status**: Planned — ready to implement
+**Status**: Done — July 3, 2026
 **Branch**: `feature/chrome-audio-control-platform`
 **Base**: `master`
 **Epic**: CACP (Chrome Audio Control Platform)
@@ -357,15 +357,15 @@ export function SourceItem({ source, isPriority, enrichedDisplay, onCommand }: S
 
 ## Verification checklist (manual)
 
-- [ ] Prerequisite: `cd cacp-extension && npm run typecheck` passes ([`cacp-extension-typescript-migration.md`](./cacp-extension-typescript-migration.md))
-- [ ] `grep -rn "function findCurrentTracklistTrack"` returns one hit in `cacp-shared/` (Phase 1)
-- [ ] `grep -rn "function TracklistPanel"` — zero inline definitions in `cacp-app/src/App.tsx`; import from `cacp-ui` (Phase 2)
-- [ ] `cd cacp-app && npm run build` succeeds after `cacp-ui` refactor (Phase 2)
-- [ ] `npm run dev` in `cacp-extension` serves popup with no console errors (Phase 3)
-- [ ] Popup: global/per-source transport, like, lookup, seek, tracklist cue rows (Phase 6)
-- [ ] App emulator: tracklist panel + progress seek unchanged after `cacp-ui` extraction (Phase 2)
-- [ ] Track title `<b>test</b>` renders as literal text in popup (Phase 5)
-- [ ] `cd cacp-extension && npm run build` + lint pass
+- [x] Prerequisite: `cd cacp-extension && npm run typecheck` passes
+- [x] `grep -rn "function findCurrentTracklistTrack"` returns one hit in `cacp-shared/`
+- [x] `grep -rn "function TracklistPanel"` — zero inline definitions in `cacp-app/src/App.tsx`; import from `cacp-ui`
+- [x] `cd cacp-app && npm run build` succeeds after `cacp-ui` refactor
+- [ ] `npm run dev` in `cacp-extension` serves popup with no console errors
+- [ ] Popup: global/per-source transport, like, lookup, seek, tracklist cue rows
+- [ ] App emulator: tracklist panel + progress seek unchanged after `cacp-ui` extraction
+- [ ] Track title `<b>test</b>` renders as literal text in popup
+- [x] `cd cacp-extension && npm run build` + lint pass
 
 ---
 

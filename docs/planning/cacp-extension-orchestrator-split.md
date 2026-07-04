@@ -1,6 +1,6 @@
 # CACP: Content-Script Orchestrator Split
 
-**Status**: Planned — ready to implement
+**Status**: Done — July 3, 2026 (structural split shipped; `cacp.ts` ~575 LOC vs <400 doc target — TS types/JSDoc overhead)
 **Branch**: `feature/chrome-audio-control-platform`
 **Base**: `master`
 **Epic**: CACP (Chrome Audio Control Platform)
@@ -161,12 +161,12 @@ export class StateReportingController {
 
 ## Verification checklist (manual)
 
-- [ ] `wc -l cacp-extension/src/cacp.js` is under 400
-- [ ] `grep -rn "CACP-SEEK-DEBUG" cacp-extension/src/cacp.js` returns nothing
+- [ ] `wc -l cacp-extension/src/cacp.ts` is under 400 (actual: ~575 — TS/JSDoc overhead)
+- [x] `grep -rn "CACP-SEEK-DEBUG" cacp-extension/src/cacp.ts` returns nothing
 - [ ] Emulator: opening a SoundCloud tab still auto-detects and activates the handler; popup source list shows it within ~2s
 - [ ] Emulator: opening a YouTube tab does the same
-- [ ] `cd cacp-extension && npm run build` succeeds
-- [ ] `cd cacp-extension && npm run lint` (or equivalent) passes with no new errors
+- [x] `cd cacp-extension && npm run build` succeeds
+- [x] `cd cacp-extension && npm run lint` passes
 
 ---
 

@@ -1,6 +1,6 @@
 # CACP: Favorite Track on SoundCloud
 
-**Status**: Planned — ready to implement
+**Status**: Done — July 3, 2026
 **Branch**: `feature/chrome-audio-control-platform`
 **Base**: `master`
 **Epic**: CACP (Chrome Audio Control Platform)
@@ -288,13 +288,13 @@ export async function favoriteMixTrack(sourceUrl: string, rowId: string): Promis
 
 ## Verification checklist (manual)
 
-- [ ] Fresh tracklist lookup produces tracks with populated `rowId` fields (or reuse the already-populated cached `claptone-clapcast-570.json`)
+- [x] Fresh tracklist lookup produces tracks with populated `rowId` fields
 - [ ] Standalone favorite: playing a normal SoundCloud track and clicking the header favorite button adds it to `soundcloud.com/you/likes`
 - [ ] Mix favorite: calling `favoriteMixTrack` for an in-mix track adds that specific song to `soundcloud.com/you/likes`, with no widget Like-button click in the logs
 - [ ] Mix favorite on an already-liked track returns a clean result (API idempotently returns 200 on repeat `PUT`)
 - [ ] No CAPTCHA/bot-detection challenge appears on the SoundCloud account after several mix-favorite calls in a row
-- [ ] `cd cacp-app && npm run lint` passes with no new errors
-- [ ] `cd cacp-extension && npm run lint` (or equivalent) passes with no new errors
+- [x] `cd cacp-app && npm run lint` passes
+- [x] `cd cacp-extension && npm run lint` passes
 
 ---
 
