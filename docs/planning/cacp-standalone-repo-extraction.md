@@ -1,8 +1,8 @@
 # CACP: Standalone Repo Extraction + Owned Release Pipeline
 
-**Status**: Not started
-**Branch**: `feature/chrome-audio-control-platform`
-**Base**: `master`
+**Status**: Phases 1–3 complete; Phase 4 build/lint verify complete (July 4, 2026). Desktop install, Chrome load, and fork deletion deferred.
+**Branch**: `main` (standalone repo)
+**Base**: N/A — extracted to `crimsonsunset/cacp`
 **Epic**: CACP (Chrome Audio Control Platform)
 **Related**: [`cacp-extension-typescript-migration.md`](./cacp-extension-typescript-migration.md), [`cacp-popup-react-rewrite.md`](./cacp-popup-react-rewrite.md)
 **Estimated effort**: ~1 day
@@ -186,11 +186,22 @@ git tag v0.7.0 && git push --tags
 
 ### Phase 4: Verify + retire the fork copy (~1h)
 
-- Install the new release's zip into a real DeskThing Desktop instance, confirm the app installs and runs identically to the current `cacp-app/dist/cacp-v0.6.1.zip`
-- Load the extension zip's contents (unpacked) into Chrome, confirm popup + site detection still work end-to-end
-- Once verified, delete `cacp-app/`, `cacp-extension/`, `cacp-shared/`, `cacp-ui/`, `docs/cacp/`, and `docs/planning/cacp-*.md` from the `DeskThing-Apps` fork in a follow-up commit (manual, not scripted here — see Out of Scope)
+**Build/lint verify (July 4, 2026 — scoped):** ✅ complete
 
-**Outcome:** New repo is the sole source of truth for CACP. DeskThing Desktop install + Chrome extension load both work from the new repo's release assets, byte-for-byte equivalent to what the fork currently produces.
+- [x] `npm ci` at repo root
+- [x] `npm run lint` (all workspaces)
+- [x] `npm run typecheck` (cacp-extension)
+- [x] `cd cacp-app && npm run build` → `dist/cacp-v1.0.0.zip` + `dist/latest.json`
+- [x] `cd cacp-extension && npm run build` → `dist/` populated
+- [x] `grep -r "ItsRiprod/DeskThing-Apps"` under `cacp-app/` and `cacp-extension/` — no matches
+
+**Deferred (manual follow-up):**
+
+- [ ] Install the new release's zip into a real DeskThing Desktop instance
+- [ ] Load the extension zip's contents (unpacked) into Chrome, confirm popup + site detection end-to-end
+- [ ] Delete `cacp-app/`, `cacp-extension/`, `cacp-shared/`, `cacp-ui/`, `docs/cacp/`, and `docs/planning/cacp-*.md` from the `DeskThing-Apps` fork
+
+**Outcome (scoped):** Standalone repo builds cleanly with no stale upstream URL references. Full runtime verification and fork retirement remain manual follow-ups.
 
 ---
 
@@ -233,4 +244,4 @@ git tag v0.7.0 && git push --tags
 
 ---
 
-*Last Updated: July 3, 2026*
+*Last Updated: July 4, 2026*
